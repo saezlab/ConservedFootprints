@@ -1,0 +1,178 @@
+---
+title: "Case study"
+author: "Christian Holland"
+date: "26/04/2018"
+output: html_document
+---
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup"}
+library(tidyverse)
+library(cowplot)
+library(RColorBrewer)
+library(ggrepel)
+library(ggpubr)
+```
+
+```{r "p-value distribution"}
+df = readRDS("output/disease_enrichment/gsea_result.rds") %>%
+  mutate(organism = str_to_title(organism),
+         class = case_when(class == "pathway" ~ "Pathway",
+                           class == "tf" ~ "TF"))
+
+# pvalue distribution
+p_hist_plot = df %>% 
+  ggplot(aes(x = pval, fill=class)) +
+  geom_histogram(color="black", binwidth = 0.05, boundary = 0.05) +
+  background_grid(major = "xy", minor = "none") +
+  facet_wrap(~class, scales = "free") +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_text(size=14, margin = margin(t=4, b = 4)),
+        aspect.ratio = c(2)) +
+  labs(x = "p-value", y="Counts") +
+  scale_fill_manual(values = c("#F6A800", "#0098A1"))
+
+# ggsave(filename = "figures/case_study/pval_histogram.png", 
+#        plot = p_hist_plot, device = "png", width=5, height=5)
+```
+
+```{r "volcano plot"}
+# paramete for volcano plot
+set.seed(2)
+effect_sz = 1
+pval_th = 0.1
+
+  
+
+df = readRDS("output/disease_enrichment/gsea_result.rds") %>%
+  mutate(organism = str_to_title(organism),
+         class = case_when(class == "pathway" ~ "Pathway",
+                           class == "tf" ~ "TF"),
+         status = case_when(padj <= pval_th & NES >= effect_sz ~ "Enriched",
+                            padj <= pval_th & NES <= -effect_sz ~ "Depleted",
+                            TRUE ~ "Not enriched"))
+
+# labeling for volcano plot
+df = df %>%
+  mutate(label = case_when(feature == "VEGF" & 
+                             padj <= pval_th &
+                             (disease_set == "pancreatic carcinoma") ~ 
+                             "VEGF ~ pancreatic cancer",
+                           feature == "PPARA" &
+                             padj <= pval_th &
+                             organism == "Mouse" &
+                             (disease_set == "liver disease" |
+                                disease_set == "hepatocellular carcinoma" |
+                                disease_set == "liver carcinoma") ~
+                             "PPARA ~ liver disease",   
+                           feature == "TP53" &
+                             padj <= pval_th &
+                             disease_set == "cervical cancer" ~
+                             "TP53 ~ cancer",
+                           feature == "PI3K" &
+                             padj <= pval_th &
+                             disease_set == "cervical cancer" ~
+                             "PI3K ~ cancer",
+                           feature == "JAK-STAT" &
+                             padj <= pval_th &
+                             disease_set == "viral infectious disease" ~
+                             "JAK-STAT ~ immune disease",
+                           feature == "Hypoxia" &
+                             padj <= pval_th &
+                             disease_set == "rheumatoid arthritis" ~
+                             "Hypoxia ~ rheumatoid arthritis",
+                           feature == "ETS2" &
+                             padj <= pval_th &
+                             disease_set == "endometrial cancer" ~
+                             "ETS2 ~ cancer",
+                           feature == "E2F1" &
+                             padj <= pval_th &
+                             disease_set == "cervical cancer" ~
+                             "E2F1 ~ cancer",
+                           feature == "NFKB1" &
+                             padj <= pval_th &
+                             disease_set == "blepharitis" ~ 
+                             "NFKB1 ~ immune disease",
+                           feature == "p53" & 
+                             padj <= pval_th &
+                             disease_set == "pulmonary fibrosis" ~
+                             "p53 ~ pulmonary fibrosis",
+                           TRUE ~ ""))
+volcano_plot_pw = df %>% 
+  filter(class == "Pathway") %>%
+  ggplot(aes(x = NES, y=-log10(padj), color=status, label=label)) +
+  geom_point(alpha=0.4) +
+  #facet_wrap(~class, nrow = 2, scales = "free") +
+  background_grid(major = "xy", minor = "none") +
+  geom_label_repel(size=4,show.legend = F, box.padding = 0, 
+                   segment.color = "black") +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14),
+        legend.position = "top",
+        legend.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(size=14, margin = margin(t=4, b = 4)),
+        aspect.ratio = c(1)
+        ) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  labs(x = "NES", y="-log10(FDR)") +
+  scale_color_manual(values=c("#CC071E", "#0098A1","#9C9E9F"))
+
+volcano_plot_tf = df %>% 
+  filter(class == "TF") %>%
+  ggplot(aes(x = NES, y=-log10(padj), color=status, label=label)) +
+  geom_point(alpha=0.4) +
+  #facet_wrap(~class, nrow = 2, scales = "free") +
+  background_grid(major = "xy", minor = "none") +
+  geom_label_repel(size=4,show.legend = F, box.padding = 0, 
+                   segment.color = "black") +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14),
+        legend.position = "top",
+        legend.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(size=14, margin = margin(t=4, b = 4)),
+        aspect.ratio = c(1)
+        ) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  labs(x = "NES", y="-log10(FDR)") +
+  scale_color_manual(values=c("#CC071E", "#0098A1","#9C9E9F"))
+
+ggsave(filename = "paper/figures/Figure5/Figure5b.png", 
+       plot = volcano_plot, device = "png", width=5, height=10)
+```
+
+```{r "disease set distribution"}
+disease_sets_df = readRDS("output/disease_enrichment/disease_sets.rds") %>%
+  select(group, id) %>%
+  group_by(group) %>%
+  count() 
+
+disease_set_distribution_plot = disease_sets_df %>%
+  ggplot(aes(x=log10(n))) +
+  geom_density(fill="#BDCD00", alpha=0.6) +
+  background_grid(major = "xy", minor = "none") +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.position = "none",
+        strip.background = element_blank(),
+        strip.text = element_text(size=14, margin = margin(t=4, b = 4)),
+        aspect.ratio = c(1)) +
+  labs(x = "log10(Disease-set size)", y="Density")
+
+ggsave(filename = "paper/figures/FigureS3/FigureS3.png", 
+       plot = disease_set_distribution_plot, device = "png", width=5, height=5)
+
+```

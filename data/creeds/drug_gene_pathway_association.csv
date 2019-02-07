@@ -1,0 +1,88 @@
+DRUG or GENE;PROGENy;Direction
+Abiraterone;Androgen;-1
+Androstanolone;Androgen;1
+Apratoxin a;p53;1
+Azacitidine;p53;1
+Azathioprine;p53;1
+Bicalutamide;Androgen;-1
+Bleomycin;p53;1
+Carboplatin;p53;1
+Carboplatin (24 h);p53;1
+Carboplatin (30 h);p53;1
+Carboplatin (36 h);p53;1
+Chlorambucil;p53;1
+Cisplatin;p53;1
+Cyclophosphamide;p53;1
+Cytarabine;p53;1
+Decitabine;p53;1
+Diethylstilbestrol;Estrogen;1
+Doxorubicin;p53;1
+Estradiol;Estrogen;1
+Etanercept;TNFa;-1
+Ethinyl estradiol;Estrogen;1
+Fluorouracil;p53;1
+Foretinib;VEGF;-1
+Gefitinib;EGFR;-1
+Genistein;Estrogen;1
+Heregulin;EGFR;-1
+Interferon beta-1a;JAK-STAT;1
+Interferon beta-1b;JAK-STAT;1
+Interferon gamma-1b;JAK-STAT;1
+Irinotecan;p53;1
+Lapatinib;EGFR;-1
+Letrozole;Estrogen;-1
+Lipopolysaccharide;NFkB;1
+Mek inhibitor (meki : azd6244);MAPK;-1
+Natural alpha interferon;JAK-STAT;1
+Paclitaxel;p53;1
+Phorbol 12-myristate 13-acetate (pma);MAPK;1
+Phorbol ester 12-o-tetradecanoylphorbol-13-acetate (tpa);MAPK;1
+Plx4032;MAPK;-1
+Plx4720;MAPK;-1
+R1881;Androgen;1
+Sirolimus;PI3K;-1
+Tamoxifen;Estrogen;-1
+Testosterone;Androgen;1
+Tibolone;Estrogen;1
+Trastuzumab;EGFR;-1
+Vemurafenib;MAPK;-1
+AKT1;PI3K;1
+AKT2;PI3K;1
+APC;WNT;-1
+ATM;p53;1
+BCL2;Trail;-1
+BRAF;MAPK;1
+CTNNB1;WNT;1
+EGFR;EGFR;1
+ERBB2;EGFR;1
+ESR1;Estrogen;1
+ESR2;Estrogen;1
+GSK3A;WNT;-1
+GSK3B;WNT;-1
+HIF1A;Hypoxia;1
+HRAS;MAPK;1
+IFNAR1;JAK-STAT;1
+IFNAR2;JAK-STAT;1
+IFNB1;JAK-STAT;1
+IFNG;JAK-STAT;1
+IKBKB;NFkB;1
+JAK1;JAK-STAT;1
+JAK2;JAK-STAT;1
+MAP2K1;MAPK;1
+MAPK1;MAPK;1
+NFKB1;NFkB;1
+NRAS;MAPK;1
+PIK3CA;PI3K;1
+PIK3CB;PI3K;1
+PTEN;PI3K;1
+RELA;NFkB;1
+STAT1;JAK-STAT;1
+STAT2;JAK-STAT;1
+STAT3;JAK-STAT;1
+STAT6;JAK-STAT;1
+TGFB1;TGFb;1
+TGFB2;TGFb;1
+TGFBR1;TGFb;1
+TGFBR2;TGFb;1
+TNF;TNFa;1
+TP53;p53;1

@@ -1,0 +1,80 @@
+---
+title: "figure_arrangement"
+author: "Christian Holland"
+date: "22/01/2019"
+output: html_document
+---
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(cowplot)
+library(magick)
+```
+
+```{r "Figure 1"}
+fig1_1 = plot_grid(
+  ggdraw() + draw_image("paper/figures/sub/Figure1a.png"),
+  ggdraw() + draw_image("paper/figures/sub/Figure1c.png"),
+  labels=c("A", "C")
+)
+
+fig1 = plot_grid(
+  fig1_1,
+  ggdraw() + draw_image("paper/figures/sub/Figure1b.png"),
+  ncol=1, labels=c("", "B")
+  )
+ggsave("paper/figures/Figure1.png", fig1, width=10, height=10)
+
+```
+
+```{r "Figure 2"}
+fig2 = plot_grid(roc_curve_global, pr_curve_global, labels = c("A", "B"))
+ggsave("paper/figures/Figure2.png", fig2, width = 10, height=5)
+```
+
+```{r "Figure 3"}
+fig3 = plot_grid(auroc_vs_conf_plot, auprc_vs_conf_plot, roc_curve_plot, pr_curve_plot, labels = c("A", "B", "C", "D"))
+ggsave("paper/figures/Figure3.png", fig3, width = 10, height=10)
+```
+
+```{r "Figure 4"}
+fig4_1 = plot_grid(volcano_plot_pw, volcano_plot_tf, ncol=1, labels = c("B", "C"))
+fig4 = plot_grid(ggdraw() + draw_image("paper/figures/sub/Figure4a.png"), fig4_1, labels = c("A", ""))
+ggsave("paper/figures/Figure4.png", fig4, width=10, height=10)
+```
+
+```{r "Figure S1"}
+figS1 = roc_curve_pw
+ggsave("paper/figures/FigureS1.png", figS1, width = 10, height=10)
+```
+
+```{r "Figure S2"}
+figS2 = plot_grid(tp_tn_ratio_global, auroc_downsampled_global, labels = c("A", "B"))
+ggsave("paper/figures/FigureS2.png", figS2, width = 10, height=5)
+```
+
+```{r "Figure S3"}
+figS3 = pr_curve_pw
+ggsave("paper/figures/FigureS3.png", figS3, width = 10, height=10)
+```
+
+```{r "Figure S4"}
+figS4_1 = plot_grid(regulon_properties_plot, tf_coverage_plot, labels = c("A", "B"), rel_widths = c(2,1))
+figS4_2 = plot_grid(tp_tn_ratio_plot, auroc_downsampled_plot, labels = c("C", "D"), rel_widths = c(1,1))
+figS4 = plot_grid(figS3_1, figS3_2, ncol=1)
+ggsave("paper/figures/FigureS4.png", figS4, width = 10, height=10)
+```
+
+```{r "Figure S5"}
+figS5 = plot_grid(overlap_dorothea_trrust, regulon_similarity_plot, labels = c("A", "B"))
+ggsave("paper/figures/FigureS5.png", figS5, width=10, height=5)
+```

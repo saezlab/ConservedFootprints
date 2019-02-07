@@ -1,0 +1,109 @@
+---
+title: "translate_progeny_model_dorothea_regulon"
+author: "Christian Holland"
+date: "13/09/2018"
+output: html_document
+---
+
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(biomaRt)
+library(tidyverse)
+```
+
+### Create annotaion file between MGI and HGNC symbols
+```{r "create annotaion files"}
+mouse_ensembl = useMart("ensembl",dataset="mmusculus_gene_ensembl", 
+                        host = "http://jul2018.archive.ensembl.org")
+human_ensembl = useMart("ensembl", dataset = "hsapiens_gene_ensembl", 
+                        host = "http://jul2018.archive.ensembl.org")
+
+# mgi symbol - hgnc symbol
+getLDS(attributes = c("mgi_symbol"),
+       mart = mouse_ensembl,
+       attributesL = c("hgnc_symbol"), martL = human_ensembl) %>%
+  as_tibble() %>%
+  rename(mgi_symbol = MGI.symbol, hgnc_symbol = HGNC.symbol) %>%
+  write_csv("data/annotations/annotation_mgi_hgnc.csv")
+```
+
+### Translate human PROGENy matric to mouse
+```{r "translate human progeny matrix to mice"}
+# load annotation file and remove predicted genes
+annotation_mgi_hgnc = read_csv("data/annotations/annotation_mgi_hgnc.csv") %>%
+  filter(!str_detect(mgi_symbol, "^Gm[:digit:]+")) %>%
+  drop_na()
+
+# load human progeny matrix
+progeny_matrix_human_v1 = read_csv(
+  "data/progeny_benchmark/models/progeny_matrix_human_v1.csv"
+  ) %>%
+  rename(gene = X1) %>%
+  gather(pathway, weight, -gene) %>%
+  filter(weight != 0)
+
+# translate to mgi symbols
+progeny_matrix_mouse_v1 = progeny_matrix_human_v1 %>%
+  rename(hgnc_symbol = gene) %>%
+  inner_join(annotation_mgi_hgnc, by="hgnc_symbol") %>% 
+  # when multiple mgi symbols are mapped to a single hgnc symbol the progeny 
+  # weight is divided by the number of mapping mgi symbols
+  group_by(hgnc_symbol, pathway) %>% 
+  add_count(hgnc_symbol) %>%
+  mutate(weight = weight/n) %>%
+  # when multiple hgnc are mapped to a single mgi symbol the progeny weight of 
+  # the single mgi symbol is the mean of the corresponding hgnc symbols
+  group_by(mgi_symbol, pathway) %>%
+  summarise(weight = mean(weight)) %>%
+  ungroup() %>%
+  rename(gene = mgi_symbol) %>%
+  arrange(pathway, gene) %>%
+  spread(pathway, weight, fill = 0) %>%
+  data.frame(row.names=1, check.names = F, stringsAsFactors = F)
+
+write.csv(progeny_matrix_mouse_v1, 
+          "data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv")
+```
+
+### Translate human DoRothEA regulon to mouse
+```{r "translate human dorothea regulon to mice"}
+# load annotation file and remove predicted mgi genes
+annotation_mgi_hgnc = read_csv("data/annotations/annotation_mgi_hgnc.csv") %>%
+  filter(!str_detect(mgi_symbol, "^Gm[:digit:]+")) %>%
+  drop_na()
+
+# load human regulon
+dorothea_regulon_human_v1 = read_csv(
+  "data/dorothea_benchmark/regulons/dorothea_regulon_human_v1.csv"
+  )
+
+# translate to mgi symbol
+dorothea_regulon_mouse_v1 = dorothea_regulon_human_v1 %>%
+  # first translate tfs
+  rename(hgnc_symbol = tf) %>%
+  inner_join(annotation_mgi_hgnc, by="hgnc_symbol") %>%
+  select(tf = mgi_symbol, confidence, target, mor, likelihood) %>%
+  # now translate targets
+  rename(hgnc_symbol = target) %>%
+  inner_join(annotation_mgi_hgnc, by="hgnc_symbol") %>%
+  distinct(tf, confidence, target = mgi_symbol, mor, likelihood) %>%
+  group_by(tf) %>%
+  # due to the mapping it can happen that a single TF has several confidence
+  # levels. To be more conservative the lowest level/max letter is chosen
+  filter(confidence == max(confidence)) %>%
+  ungroup() %>%
+  select(tf, confidence, target, mor, likelihood)
+
+write_csv(dorothea_regulon_mouse_v1,
+          "data/dorothea_benchmark/regulons/dorothea_regulon_mouse_v1.csv")
+```

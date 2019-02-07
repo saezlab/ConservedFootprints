@@ -1,0 +1,187 @@
+---
+title: "Benchmark PROGENy on mouse and human single gene/drug perturbation data"
+author: "Christian Holland"
+date: "05/03/2018"
+output: html_document
+---
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(broom)
+library(PRROC)
+library(pROC)
+source("src/progeny_analysis.R")
+source("src/roc_curve_analysis.R")
+```
+
+```{r "load and prepare benchmarkdata for PROGENy"}
+# Those experiments were used for the construction of progeny and must be thus
+# discared
+exclude_acc = readRDS("data/progeny_benchmark/progeny_exclude_accession.rds")
+
+# Our analysis uses moderated t-values from limma as gene level statistic. 
+# Alternativly logFC and z-score could be chosen
+progeny_input = readRDS("data/progeny_benchmark/progeny_benchmark_data.rds") %>%
+  filter(!(accession %in% exclude_acc)) %>%
+  select(-c(logFC, z)) %>%
+  rename(expression = t)
+
+saveRDS(progeny_input,
+        "output/progeny_benchmark/progeny_input.rds")
+```
+
+```{r "benchmark global progeny performance"}
+# load model matrices
+M_human = read.csv("data/progeny_benchmark/models/progeny_matrix_human_v1.csv",
+                   row.names=1, check.names = F)
+
+M_mouse = read.csv("data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv"
+                   ,row.names=1, check.names = F)
+
+# load expression
+expr = readRDS("output/progeny_benchmark/progeny_input.rds") %>%
+  nest(-organism, .key=df)
+
+# setup experimental design
+design = tribble(
+  ~organism, ~M,
+  "human",  M_human,
+  "mouse",  M_mouse
+) %>%
+  full_join(expr, by="organism")
+
+
+# run progeny and measure performance globally
+progeny_performance_global = design %>%
+  mutate(activity = pmap(., .f = run_progeny)) %>%
+  filter_common_pws() %>%
+  mutate(activity = activity %>% map(prepare_progeny_for_roc, filter_tn = T)) %>%
+  select(organism, activity) %>%
+  mutate(roc = activity %>% map(calc_roc_curve),
+         pr = activity %>% map(calc_pr_curve),
+         roc_obj = activity %>% map(get_roc_object),
+         roc_downsampled = activity %>% map(calc_roc_curve, downsampling=T,
+                                            times = 3000)
+         )
+
+# statistical test if roc curves are different between mouse and human
+progeny_performance_global = progeny_performance_global %>%
+  select(organism, roc_obj) %>%
+  spread(organism, roc_obj) %>%
+  mutate(stat = pmap(., .f = function(human, mouse, ...) {
+    roc.test(human, mouse, paired=F) %>%
+      tidy() %>%
+      as_tibble()
+  })) %>%
+  gather(organism, roc_obj, -stat) %>%
+  select(-roc_obj) %>%
+  inner_join(progeny_performance_global, by=c("organism")) %>%
+  select(organism, activity, roc, roc_downsampled, pr, stat, roc_obj)
+
+saveRDS(progeny_performance_global, 
+        file="output/progeny_benchmark/progeny_benchmark_result_global.rds")
+
+# access performance scores
+# auroc
+progeny_performance_global %>% 
+  unnest(roc) %>% 
+  unnest(ci) %>%
+  filter(ci == 0.95) %>% 
+  distinct(organism, auc, lb, ub)
+
+# test difference between aurocs
+progeny_performance_global %>%
+  unnest(stat) %>%
+  distinct(organism, p.value)
+
+# test difference between boxplots
+progeny_performance_global %>%
+  unnest(roc_downsampled) %>%
+  distinct(organism, auc, run) %>%
+  nest() %>%
+  mutate(t_test = data %>% map(~tidy(lm(auc~organism, data=.)))) %>%
+  unnest(t_test)
+
+# auprc
+progeny_performance_global %>%
+  unnest(pr) %>%
+  distinct(organism, auc)
+```
+
+```{r "benchmark progeny performance pathway-wise"}
+# load model matrices
+M_human = read.csv("data/progeny_benchmark/models/progeny_matrix_human_v1.csv",
+                   row.names=1, check.names = F)
+
+M_mouse = read.csv("data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv"
+                   ,row.names=1, check.names = F)
+
+# load expression
+expr = readRDS("output/progeny_benchmark/progeny_input.rds") %>%
+  nest(-organism, .key=df)
+
+# setup experimental design
+design = tribble(
+  ~organism, ~M,
+  "human",  M_human,
+  "mouse",  M_mouse
+) %>%
+  full_join(expr, by="organism")
+
+# run progeny and measure performance pathway wise
+progeny_performance_pw = design %>%
+  mutate(activity = pmap(., .f = run_progeny)) %>%
+  mutate(activity = activity %>% map(prepare_progeny_for_roc, filter_tn = T)) %>%
+  unnest(activity) %>%
+  nest(-c(organism, pathway), .key=activity) %>%
+  mutate(roc = activity %>% map(calc_roc_curve),
+         pr = activity %>% map(calc_pr_curve),
+         roc_obj = activity %>% map(get_roc_object),
+         roc_downsampled = activity %>% map(calc_roc_curve, downsampling=T, 
+                                               times = 3000)
+         )
+
+# statistical test if roc curves are different between mouse and human
+progeny_performance_pw = progeny_performance_pw %>%
+  select(pathway, organism, roc_obj) %>%
+  spread(organism, roc_obj) %>%
+  mutate(stat = pmap(., .f = function(human, mouse, ...) {
+    if (class(human) == "roc" & class(mouse) == "roc") {
+      roc.test(human, mouse, paired=F) %>%
+        tidy() %>%
+        as_tibble()
+    } else {
+      as_tibble(NULL)
+    }
+  })) %>%
+  gather(organism, roc_obj, -pathway, -stat) %>%
+  select(-roc_obj) %>%
+  inner_join(progeny_performance_pw, by=c("pathway","organism"))
+
+saveRDS(progeny_performance_pw, 
+        file="output/progeny_benchmark/progeny_benchmark_result_pw.rds")
+
+# acess performance scores
+progeny_performance_pw %>%
+  unnest(roc) %>%
+  unnest(ci) %>%
+  filter(ci == 0.95) %>%
+  distinct(organism, pathway, auc, lb, ub)
+
+progeny_performance_pw %>% 
+  unnest(stat) %>%
+  distinct(pathway, p.value)
+
+progeny_performance_pw %>%
+  unnest(pr) %>%
+  distinct(organism, pathway, auc)
+```

@@ -1,0 +1,226 @@
+---
+title: "Case study"
+author: "Christian Holland"
+date: "26/04/2018"
+output: html_document
+---
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup"}
+library(tidyverse)
+library(viper)
+library(rols)
+library(fgsea)
+
+source("src/progeny_analysis.R")
+source("src/dorothea_analysis.R")
+```
+
+```{r "run PROGENy and DoRothEA on disease signatures"}
+# load gene expression matrix
+expr = readRDS("data/disease_enrichment/disease_expr.rds") %>%
+  select(-c(z, logFC)) %>%
+  select(expression = t, everything()) %>%
+  nest(-organism, .key=df)
+
+# load dorothea regulons
+regulon_human = read_csv(
+  "data/dorothea_benchmark/regulons/dorothea_regulon_human_v1.csv"
+  )
+regulon_mouse = read_csv(
+  "data/dorothea_benchmark/regulons/dorothea_regulon_mouse_v1.csv"
+  )
+
+# load progeny matrix
+M_human = read.csv("data/progeny_benchmark/models/progeny_matrix_human_v1.csv", 
+                   row.names=1, check.names=F)
+M_mouse = read.csv("data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv", 
+                   row.names=1, check.names=F)
+
+
+# Here we don't perform a quality check because this is only suitable for single
+# gene perturbation experiments.
+design = tribble(
+  ~organism, ~M, ~regulon, ~qc,
+  "human",  M_human, regulon_human, F,
+  "mouse",  M_mouse, regulon_mouse, F
+) %>%
+  mutate(missing_value = 0) %>%
+  full_join(expr, by="organism")
+
+res = design %>%
+  mutate(progeny = pmap(., .f = run_progeny),
+         dorothea = pmap(., .f = run_dorothea)) %>%
+  select(organism, progeny, dorothea)
+
+
+saveRDS(res, "output/disease_enrichment/progeny_dorothea_scores_untransated.rds")
+
+# translate mouse tfs to human tfs
+annotation = read_csv("data/annotations/annotation_mgi_hgnc.csv") %>%
+  rename(d_tf = mgi_symbol)
+
+res_tmp = res %>% select(-dorothea)
+
+res_translated = res %>% unnest(dorothea) %>% 
+  #filter(d_tf == "ADNP" | d_tf == "Adnp") %>%
+  #filter(id == "dz:1012" | id == "dz:985") %>%
+  #select(organism, d_tf, id) %>%
+  left_join(annotation, by="d_tf") %>%
+  mutate(d_tf = case_when(organism == "human" ~ d_tf,
+                          organism == "mouse" ~ hgnc_symbol)) %>%
+  select(-hgnc_symbol) %>%
+  nest(-organism, .key=dorothea) %>%
+  inner_join(res_tmp, by="organism")
+
+saveRDS(res_translated, 
+        file="output/disease_enrichment/progeny_dorothea_scores.rds")
+```
+
+```{r "classify diseases and find all corresponding ancestors"}
+# load progeny and dorothea scores
+dat = readRDS("output/disease_enrichment/progeny_dorothea_scores.rds")
+
+# creating mapping between disease and experiment id
+disease2id = dat %>%
+  unnest(progeny) %>% # unnest(dorothea) would also work
+  select(id, query=disease_name) %>%
+  distinct()
+
+
+# classify diseases using top 10 associated doi disease terms
+res = disease2id %>%
+  distinct(query) %>%
+  pull() %>%
+  map_df(function(n) {
+  trm = OlsSearch(q = n, ontology = "doid", exact=F, rows=10)
+  doi_diseases = try(olsSearch(trm), silent=T)
+  if (class(doi_diseases) == "try-error") {
+    message(paste0("The disease: '", n, "' hasn't been found!"))
+    return(as_tibble(NULL))
+  } else {
+    as(doi_diseases, "data.frame") %>%
+      as_tibble() %>%
+      mutate(query = n)
+  }
+}) %>%
+  filter(is_defining_ontology == T) %>%
+  filter(obo_id != "DOID:4") # DOID:4 correspond to the root of the network
+
+# function to find all ancestors for a given DOID id
+get_ancestors = function(id) {
+  id = pull(id)
+  ontology = Ontology("doid")
+  term(ontology , id) %>%
+    ancestors() %>%
+    as("data.frame") %>% 
+    filter(is_defining_ontology == T) %>%
+    select(id, group = label) %>%
+    as_tibble()
+}
+
+
+# find for each associated doi disease the ancestors (based on DOID number)
+anc = res %>% 
+  distinct(obo_id, label, query) %>%
+  nest(obo_id) %>% 
+  mutate(ancestors = data %>% map(., .f = get_ancestors)) %>%
+  unnest(ancestors) %>%
+  distinct(query, group) %>%
+  inner_join(disease2id, by="query")
+
+saveRDS(anc, file="output/disease_enrichment/disease_sets.rds")
+```
+
+```{r "disease enrichment"}
+dat = readRDS("output/disease_enrichment/progeny_dorothea_scores.rds")
+disease_sets_df = readRDS("output/disease_enrichment/disease_sets.rds")
+
+# save disease sets for supplement
+disease_sets_df %>% 
+  filter(group != "disease") %>%
+  select(disease = query, disease_set = group, experiment=id) %>%
+  arrange(disease_set, disease, experiment) %>%
+  select(disease_set, disease, experiment) %>%
+  write_csv("paper/material/disease_sets.csv")
+
+
+# create disease sets from data frame for GSEA
+gsea_sets = disease_sets_df %>%
+  filter(group != "disease") %>%
+  split(.$group) %>%
+  map(function(df) {
+    names = df %>%
+      pull(id)
+      })
+
+# prepare data for enrichment
+# progeny
+p_disease = dat %>%
+  unnest(progeny) %>%
+  select(feature = progeny_pathway, score, organism, disease_name, id) %>%
+  mutate(class = "pathway")
+
+# dorothea
+# find common tfs between mouse and human data
+common_tfs = dat %>%
+  unnest(dorothea) %>%
+  filter(confidence == "A" | confidence == "B") %>%
+  # filter for tfs which are present in mouse and human, e.g. "FOXP1" is in 
+  # human but not in mouse; TFDP3 is in mouse but not in human
+  distinct(organism, d_tf) %>%
+  group_by(d_tf) %>%
+  mutate(n = n()) %>%
+  filter(n == 2) %>%
+  pull(d_tf)
+
+d_disease = dat %>%
+  unnest(dorothea) %>%
+  filter(confidence == "A" | confidence == "B", d_tf %in% common_tfs) %>%
+  select(feature = d_tf, score = d_score, organism, disease_name, id) %>%
+  mutate(class = "tf")
+
+gsea_input = bind_rows(p_disease, d_disease)
+
+# run GSEA using fgsea 
+gsea_res = gsea_input %>%
+  nest(-c(organism, feature, class)) %>%
+  mutate(gsea = data %>% map(function(i) {
+    # order values
+    ordered_values = arrange(i, desc(score))
+    input = setNames(ordered_values$score, ordered_values$id)
+    # run GSEA
+    fgsea(gsea_sets, input, nperm = 10000, minSize = 5, maxSize = 45) %>%
+      as_tibble() %>%
+      arrange(padj) %>%
+      rename(disease_set = pathway)
+    })) %>%
+  unnest(gsea)
+
+saveRDS(gsea_res, file="output/disease_enrichment/gsea_result.rds")
+
+# performance scores
+gsea_res %>%
+  filter(padj <= 0.1 & abs(NES) > 1) %>%
+  group_by(class) %>%
+  count()
+
+gsea_res %>%
+  filter(padj <= 0.1 & abs(NES) > 1) %>%
+  group_by(class) %>%
+  distinct(class, disease_set) %>%
+  count()
+
+gsea_res %>%
+  filter(padj <= 0.1 & abs(NES) > 1) %>%
+  filter(class == "tf") %>%
+  count(feature) %>%
+  arrange(-n)
+```

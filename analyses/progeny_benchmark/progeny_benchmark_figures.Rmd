@@ -1,0 +1,291 @@
+---
+title: "Benchmark PROGENy on mouse and human single gene/drug perturbation data"
+author: "Christian Holland"
+date: "05/03/2018"
+output: html_document
+---
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(RColorBrewer)
+library(cowplot)
+library(plotrix)
+library(ggsignif)
+library(ggpubr)
+```
+
+```{r "progeny benchmark data distribution"}
+df = readRDS("output/progeny_benchmark/progeny_input.rds") %>%
+  distinct(organism, id, pathway, effect, source)
+
+# bright colors
+mycolors=list(Source="white",
+                "single gene perturbation"="#B65256",
+                "single drug perturbation" ="#FABE50",
+                human="#407FB7",
+                mouse="#8DC060",
+                activating="#00B1B7",
+                inhibiting="#834E75")
+
+src_df = df %>% group_by(source) %>% count()
+org_df = df %>% group_by(source, organism) %>% count()
+eff_df = df %>% group_by(source, organism, effect) %>% count() 
+  
+iniR=0.21 # initial radius
+fz = 1.5
+
+# create overlay pieplots
+pie(1, radius=iniR, init.angle=90, col=c('white'), border = NA, labels='')
+src = floating.pie(0,0,src_df$n,radius=5*iniR, startpos=pi/2,border=NA,
+                   col = as.character(mycolors[src_df$source]))
+org = floating.pie(0,0,org_df$n,radius=4*iniR, startpos=pi/2,border=NA,
+                   col = as.character(mycolors[org_df$organism]))
+sta = floating.pie(0,0,eff_df$n,radius=3*iniR, startpos=pi/2,border=NA,
+                   col = as.character(mycolors[eff_df$effect]))
+floating.pie(0,0, nrow(df), radius=2*iniR, startpos=pi/2, border=NA,
+               col = as.character(mycolors["Source"]))
+  
+# labelling
+pie.labels(x=0, y=-0.025, radius=0, angles = pi/2,
+           label = paste("n = ", nrow(df)), cex=fz)
+pie.labels(x=0.0,y=0.0, angles=src,radius=4.2*iniR, 
+           labels = src_df$n, cex=fz, col="white")
+pie.labels(x=0.0,y=0.0, angles=org,radius=3.2*iniR, 
+           labels = org_df$n, cex=fz, col="white")
+pie.labels(x=0.0,y=0.0, angles=sta,radius=2.2*iniR, 
+           labels = eff_df$n, cex=fz, col="white")
+  
+```
+
+```{r "global roc curve"}
+df_roc = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_global.rds"
+  ) %>%
+  unnest(roc) %>%
+  mutate(legend = paste0(str_to_title(organism), 
+                         " (AUROC = ",round(auc,3), 
+                         ")"))
+
+roc_curve_global = ggplot(df_roc, aes(x = fpr, y=tpr, colour=legend)) +
+  geom_line(size=2) +
+  geom_abline(linetype=2, size=1) +
+  #coord_fixed() +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14),
+        legend.title = element_blank(),
+        legend.position = c(0.3, 0.15)
+        ) +
+  guides(color=guide_legend(
+    keywidth=0.5,
+    keyheight=0.5,
+    default.unit="inch",
+    ncol=1)) +
+  scale_color_manual(values=c("#1F78B4","#33A02C")) +
+  labs(x = "False positive rate", y = "True positive rate")
+
+ggsave(filename = "paper/figures/Figure2/Figure2a.png", 
+       plot = roc_curve_global, device = "png", width=5, height=5)
+
+```
+
+```{r "global downsampled auroc"}
+df_downsampled = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_global.rds"
+  ) %>%
+  mutate(organism = str_to_title(organism)) %>%
+  unnest(roc_downsampled) %>%
+  distinct(organism, auc, run)
+
+df_auc = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_global.rds"
+  ) %>%
+  mutate(organism = str_to_title(organism)) %>%
+  unnest(roc) %>%
+  distinct(organism, auc)
+
+auroc_downsampled_global = df_downsampled %>%
+  ggplot(aes(x=organism, y=auc)) +
+  geom_signif(comparisons = list(c("Human", "Mouse")),
+              map_signif_level=T, textsize = 6, y_position=0.8, test="t.test") +
+  geom_boxplot(aes(color=organism)) +
+  background_grid(major = "xy", minor = "none") +
+  labs(x = "Organism", y="AUROC") +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.position = "none") +
+  geom_point(data = df_auc,
+             aes(x = organism, y = auc, color=organism, fill=organism), 
+             shape = 18,size=4) +
+  scale_color_manual(values=c("#1F78B4","#33A02C")) +
+  scale_fill_manual(values=c("#1F78B4","#33A02C")) +
+  lims(y = c(0.5,1)) +
+  labs(x ="", y="AUROC")
+
+  
+
+ggsave(filename = "paper/figures/Figure2/Figure2b.png", 
+       plot = auroc_downsampled_global, device = "png", width=2.5, height=5)
+  
+```
+
+```{r "global pr curve"}
+df_pr = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_global.rds"
+  ) %>%
+  unnest(pr) %>%
+  mutate(legend = paste0(str_to_title(organism), 
+                         " (AUPRC = ",round(auc,3), 
+                         ")"))
+
+pr_curve_global = ggplot(df_pr, aes(x = recall, y=precision, color=legend)) +
+  geom_line(size=2) +
+  #coord_fixed() +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14),
+        legend.title = element_blank(),
+        legend.position = c(0.3, 0.838)
+        ) +
+  guides(color=guide_legend(
+    keywidth=0.5,
+    keyheight=0.5,
+    default.unit="inch",
+    ncol=1)) +
+  scale_color_manual(values=c("#1F78B4","#33A02C")) +
+  labs(x = "Recall", y = "Precision") +
+  geom_hline(yintercept = 0.1, size=1, linetype=2) +
+  lims(y=c(0,1))
+
+ggsave(filename = "paper/figures/Figure2/Figure2c.png", 
+       plot = pr_curve_global, device = "png", width=5, height=5)
+```
+
+```{r "TP/TN ratio"}
+df_tp_tn_ratio = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_global.rds"
+  ) %>%
+  unnest(roc) %>%
+  distinct(organism, tp, tn) %>%
+  mutate(lab = paste0("TP-ratio: ", round(tp / (tp + tn) * 100,2), " %"),
+         total = tp + tn) %>%
+  gather(key = "variable", value = "value", -organism, -lab, -total) %>%
+  mutate(ratio = (value/total)*100) %>%
+  mutate(variable = str_to_upper(variable),
+         organism = str_to_title(organism))
+
+tp_tn_ratio_global = ggplot(df_tp_tn_ratio, 
+                            aes(x=organism, y=ratio, fill=variable)) +
+  geom_bar(stat = "identity", position="stack") +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14, 
+                                   margin = margin(r = 24, unit = "pt")),
+        legend.title = element_blank(),
+        legend.position = "top"
+        ) +
+  guides(fill=guide_legend(
+    keywidth=0.2,
+    keyheight=0.2,
+    default.unit="inch",
+    ncol=2)) +
+  scale_fill_manual(values=c("#006165","#F6A800")) +
+  labs(x = "", y="Percentage [%]")
+
+ggsave(filename = "paper/figures/Figure2/Figure2d.png", 
+       plot = tp_tn_ratio_global, device = "png", width=2.5, height=5)
+```
+
+```{r "pathway-wise roc curves"}
+df_roc_pw = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_pw.rds"
+  ) %>% unnest(roc) %>% 
+  mutate(
+    legend = paste0(str_to_title(organism), " (AUROC = ",round(auc,3), ")")
+  ) %>%
+  mutate(organism = str_to_title(organism))
+
+
+roc_curve_pw = ggplot(df_roc_pw, aes(x = fpr, y=tpr, color=organism)) +
+  geom_line(size=1) +
+  geom_abline(linetype=2, size=1) +
+  facet_wrap(~pathway, scales="free") +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14),
+        legend.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(size=14, margin = margin(t=4, b = 4)),
+        legend.position = c(0.65,0.08)
+        ) +
+  guides(color=guide_legend(
+    keywidth=0.3,
+    keyheight=0.2,
+    default.unit="inch",
+    ncol=1)) +
+  scale_color_manual(values=c("#1F78B4","#33A02C")) +
+  labs(x = "False positive rate", y = "True positive rate") +
+  lims(x=c(0,1), y=c(0,1))
+
+ggsave(filename = "paper/figures/FigureS1/FigureS1.png", 
+       plot = roc_curve_pw, device = "png", width=10, height=10)
+```
+
+```{r "pathway-wise pr curves"}
+df_pr_pw = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_pw.rds"
+  ) %>% unnest(pr) %>% 
+  mutate(
+    legend = paste0(str_to_title(organism), " (AUPRC = ",round(auc,3), ")")
+  ) %>%
+  mutate(organism = str_to_title(organism)) %>%
+  filter(pathway != "Androgen" | organism == "Human") %>%
+  filter(pathway != "TGFb" | organism == "Mouse") %>%
+  filter(pathway != "Trail" | organism == "Mouse") %>%
+  filter(pathway != "VEGF" | organism == "Mouse")
+
+random_model = df_pr_pw %>% 
+  distinct(pathway, organism, auc, tp, tn) %>%
+  mutate(tp_ratio = tp / (tp + tn)) %>%
+  na.omit()
+
+pr_curve_pw = ggplot(df_pr_pw, aes(x = recall, y=precision, color=organism)) +
+  geom_hline(data = random_model, aes(yintercept = tp_ratio, color=organism), 
+             linetype=2, size=1) +
+  geom_line(size=1) +
+  facet_wrap(~pathway, scales="free") +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14),
+        legend.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(size=14, margin = margin(t=4, b = 4)),
+        legend.position = c(0.65,0.08)
+        ) +
+  guides(color=guide_legend(
+    keywidth=0.3,
+    keyheight=0.2,
+    default.unit="inch",
+    ncol=1)) +
+  scale_color_manual(values=c("#1F78B4","#33A02C")) +
+  labs(x = "Recall", y = "Precision") +
+  lims(x=c(0,1), y=c(0,1))
+  
+
+ggsave(filename = "paper/figures/FigureS2/FigureS2.png", 
+       plot = pr_curve_pw, device = "png", width=10, height=10)
+```

@@ -1,0 +1,407 @@
+---
+title: Translate human regulons to mouse regulons
+author: "Christian Holland"
+date: "09/04/2018"
+output: html_document
+---
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(RColorBrewer)
+library(cowplot)
+library(plotrix)
+library(ggsignif)
+library(VennDiagram)
+```
+
+```{r "dorothea benchmark data distribution"}
+df = readRDS("data/dorothea_benchmark/dorothea_benchmark_data.rds") %>%
+  filter(organism == "mouse") %>%
+  distinct(organism, id, tf, effect, source)
+
+# bright colors
+mycolors=list(Source="white",
+                "single gene perturbation"="#B65256",
+                "single drug perturbation" ="#FABE50",
+                human="#407FB7",
+                mouse="#8DC060",
+                overexpression="#00B1B7",
+                knockdown="#834E75")
+
+src_df = df %>% group_by(source) %>% count()
+org_df = df %>% group_by(source, organism) %>% count()
+eff_df = df %>% group_by(source, organism, effect) %>% count() 
+  
+iniR=0.21 # initial radius
+fz = 1.5
+
+# create overlay pieplots
+pie(1, radius=iniR, init.angle=90, col=c('white'), border = NA, labels='')
+src = floating.pie(0,0,src_df$n,radius=5*iniR, startpos=pi/2,border=NA,
+                   col = as.character(mycolors[src_df$source]))
+org = floating.pie(0,0,org_df$n,radius=4*iniR, startpos=pi/2,border=NA,
+                   col = as.character(mycolors[org_df$organism]))
+sta = floating.pie(0,0,eff_df$n,radius=3*iniR, startpos=pi/2,border=NA,
+                   col = as.character(mycolors[eff_df$effect]))
+floating.pie(0,0, nrow(df), radius=2*iniR, startpos=pi/2, border=NA,
+               col = as.character(mycolors["Source"]))
+  
+# labelling
+pie.labels(x=0, y=-0.025, radius=0, angles = pi/2,
+           label = paste("n = ", nrow(df)), cex=fz)
+pie.labels(x=0.0,y=0.0, angles=src,radius=4.2*iniR, 
+           labels = src_df$n, cex=fz, col="white")
+pie.labels(x=0.0,y=0.0, angles=org,radius=3.2*iniR, 
+           labels = org_df$n, cex=fz, col="white")
+pie.labels(x=0.0,y=0.0, angles=sta,radius=2.2*iniR, 
+           labels = eff_df$n, cex=fz, col="white")
+  
+```
+
+```{r "regulon properties"}
+regulon_properties = read_csv(
+  "data/dorothea_benchmark/regulons/dorothea_regulon_mouse_v1.csv"
+  ) %>%
+  distinct() %>%
+  nest(-confidence) %>%
+  mutate(properties = data %>% map(function(k) {
+    num_tfs = k %>% distinct(tf) %>% nrow()
+    num_targets = k %>% distinct(target) %>% nrow()
+    num_interactions = k %>% nrow()
+    tribble(
+      ~TFs, ~Targets, ~Interactions,
+      num_tfs, num_targets, num_interactions)
+  })) %>%
+  select(-data) %>%
+  unnest(properties) %>%
+  gather(variable, value, -confidence) %>%
+  mutate(variable = factor(variable, 
+                           levels=c("TFs", "Targets", "Interactions")))
+
+
+regulon_properties_plot = regulon_properties %>%
+  ggplot(aes(x = variable, y=value, fill=confidence)) +
+  geom_bar(stat = "identity", position = position_stack(reverse=T)) +
+  facet_wrap(~variable, scales="free") +
+  scale_fill_manual(values = brewer.pal(9,"BuGn")[c(3,4,6,7,8)]) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_blank(),
+        axis.title.x = element_blank()) +
+  labs(y="Count") +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  guides(fill=guide_legend(
+    title = "DoRothEA Confidence Level",
+    default.unit="inch",
+    ncol=5))
+
+ggsave(filename = "paper/figures/Figure3/Figure3a.png", 
+       plot = regulon_properties_plot, device = "png", width=6.5, height=5)
+
+```
+
+```{r "tf coverage"}
+df_coverage = readRDS("output/dorothea_benchmark/dorothea_benchmark_result.rds") %>%
+  filter(organism == "mouse") %>%
+  unnest(roc) %>%
+  distinct(organism, confidence, name, coverage)
+  
+tf_coverage_plot = df_coverage %>%
+  ggplot(aes(x = confidence, y=coverage, fill=confidence)) +
+  geom_col() +
+  scale_fill_manual(values = brewer.pal(9,"BuGn")[c(3,4,6,7,8)]) +
+  labs(x="DoRothEA Confidence Level", y="TF Coverage") +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        axis.text.x = element_text(angle = 45, hjust=1),
+        legend.text = element_text(size=14),
+        legend.position = "none",
+        axis.title.x = element_blank())
+
+ggsave(filename = "paper/figures/Figure3/Figure3b.png", 
+       plot = tf_coverage_plot, device = "png", width=3.5, height=5)
+```
+
+```{r "auroc vs confidence level"}
+df_auroc = readRDS("output/dorothea_benchmark/dorothea_benchmark_result.rds") %>%
+  filter(organism == "mouse") %>%
+  unnest(roc) %>%
+  distinct(organism, confidence, name, auc) %>%
+  mutate(name = case_when(name == "dorothea" ~ "DoRothEA",
+                          name == "trrust" ~ "TRRUST"))
+
+auroc_vs_conf_plot = df_auroc %>% 
+  ggplot(aes(x=confidence, y=auc, color=name, group=name)) +
+  geom_point(size=3) +
+  geom_line(size=1.5) +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        axis.text.x = element_text(angle = 45, hjust=1),
+        legend.text = element_text(size=14),
+        legend.title = element_blank(),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(size=14, margin = margin(t=4, b = 4))
+        ) +
+  guides(color=guide_legend(
+    keywidth=0.5,
+    keyheight=0.5,
+    default.unit="inch",
+    ncol=2)) +
+  scale_color_manual(values=c("#A11035","#0098A1")) +
+  labs(x = "DoRothEA Confidence Level", y = "AUROC")
+
+ggsave(filename = "paper/figures/Figure3/Figure3c.png", 
+       plot = auroc_vs_conf_plot, device = "png", width=5, height=5)
+```
+
+```{r "auprc vs confidence level"}
+df_auprc = readRDS("output/dorothea_benchmark/dorothea_benchmark_result.rds") %>%
+  filter(organism == "mouse") %>%
+  unnest(pr) %>%
+  distinct(organism, confidence, name, auc) %>%
+  mutate(name = case_when(name == "dorothea" ~ "DoRothEA",
+                          name == "trrust" ~ "TRRUST"))
+
+auprc_vs_conf_plot = df_auprc %>% 
+  ggplot(aes(x=confidence, y=auc, color=name, group=name)) +
+  geom_point(size=3) +
+  geom_line(size=1.5) +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        axis.text.x = element_text(angle = 45, hjust=1),
+        legend.text = element_text(size=14),
+        legend.title = element_blank(),
+        legend.position = "top",
+        strip.background = element_blank(),
+        strip.text = element_text(size=14, margin = margin(t=4, b = 4))
+        ) +
+  guides(color=guide_legend(
+    keywidth=0.5,
+    keyheight=0.5,
+    default.unit="inch",
+    ncol=2)) +
+  scale_color_manual(values=c("#A11035","#0098A1")) +
+  labs(x = "DoRothEA Confidence Level", y = "AUPRC")
+
+ggsave(filename = "paper/figures/Figure3/Figure3d.png", 
+       plot = auprc_vs_conf_plot, device = "png", width=5, height=5)
+```
+
+```{r "global roc curve"}
+df_roc = readRDS("output/dorothea_benchmark/dorothea_benchmark_result.rds") %>%
+  filter(organism == "mouse" & confidence == "AB") %>%
+  unnest(roc) %>%
+  mutate(name = case_when(name == "dorothea" ~ "DoRothEA",
+                          name == "trrust" ~ "TRRUST")) %>%
+  mutate(
+    legend = paste0(name, " (AUROC = ",round(auc,3), ")")
+  )
+
+roc_curve_plot = ggplot(df_roc, aes(x = fpr, y=tpr, color=legend)) +
+  geom_line(size=2) +
+  geom_abline(linetype=2, size=1) +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14),
+        legend.title = element_blank(),
+        legend.position = c(0.225, 0.15)
+        ) +
+  guides(color=guide_legend(
+    keywidth=0.5,
+    keyheight=0.5,
+    default.unit="inch",
+    ncol=1)) +
+  scale_color_manual(values=c("#A11035","#0098A1")) +
+  labs(x = "False positive rate", y = "True positive rate")
+
+ggsave(filename = "paper/figures/Figure4/Figure4a.png", 
+       plot = roc_curve_plot, device = "png", width=5, height=5)
+
+```
+
+```{r "global downlsampled auroc"}
+df_auroc_ds = readRDS(
+  "output/dorothea_benchmark/dorothea_benchmark_result.rds"
+  ) %>%
+  filter(organism == "mouse" & confidence == "AB") %>%
+  unnest(roc_downsampled) %>%
+  mutate(name = case_when(name == "dorothea" ~ "DoRothEA",
+                          name == "trrust" ~ "TRRUST")) %>%
+  distinct(name, auc, run)
+
+anno_roc_global = readRDS("output/dorothea_benchmark/dorothea_benchmark_result.rds") %>%
+  unnest(roc) %>%
+  distinct(organism, confidence, name, auc) %>%
+  filter(organism == "mouse" & confidence == "AB") %>%
+  mutate(name = case_when(name == "dorothea" ~ "DoRothEA",
+                          name == "trrust" ~ "TRRUST")) %>%
+  rename(regulon = name)
+
+auroc_downsampled_plot = df_auroc_ds %>%
+  ggplot(aes(x=name, y=auc)) +
+  geom_signif(comparisons = list(c("DoRothEA", "TRRUST")),
+              map_signif_level=T, textsize = 6, y_position=0.9, test="t.test") +
+  geom_boxplot(aes(color=name)) +
+  background_grid(major = "xy", minor = "none") +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.position = "none") +
+  geom_point(data = anno_roc_global,
+             aes(x = regulon, y = auc, fill=regulon, color=regulon), shape = 18,size=4) +
+  scale_color_manual(values=c("#A11035","#0098A1")) +
+  lims(y = c(0.5,1)) +
+  labs(y="AUROC", x="")
+
+ggsave(filename = "paper/figures/Figure4/Figure4b.png", 
+       plot = auroc_downsampled_plot, device = "png", width=2.5, height=5)
+
+```
+
+```{r "global pr curve"}
+df_pr = readRDS("output/dorothea_benchmark/dorothea_benchmark_result.rds") %>%
+  filter(organism == "mouse" & confidence == "AB") %>%
+  unnest(pr) %>%
+  mutate(name = case_when(name == "dorothea" ~ "DoRothEA",
+                          name == "trrust" ~ "TRRUST"),
+         legend = paste0(name, " (AUPRC = ",round(auc,3), ")"),
+         tp_ratio = tp / (tp+tn))
+
+pr_curve_plot = ggplot(df_pr, aes(x = recall, y=precision, color=legend)) +
+  geom_line(size=2) +
+  geom_hline(aes(yintercept = tp_ratio), size=1, linetype=2) +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14),
+        legend.title = element_blank(),
+        legend.position = c(0.2, 0.838)
+        ) +
+  guides(color=guide_legend(
+    keywidth=0.5,
+    keyheight=0.5,
+    default.unit="inch",
+    ncol=1)) +
+  scale_color_manual(values=c("#A11035","#0098A1")) +
+  labs(x = "Recall", y = "Precision") +
+  lims(x = c(0,1), y=c(0,1))
+
+ggsave(filename = "paper/figures/Figure4/Figure4c.png", 
+       plot = pr_curve_plot, device = "png", width=5, height=5)
+```
+
+```{r "tp/tn ratio"}
+df_tp_tn_ratio = readRDS(
+  "output/dorothea_benchmark/dorothea_benchmark_result.rds"
+  ) %>%
+  filter(organism == "mouse" & confidence == "AB") %>%
+  unnest(roc) %>%
+  distinct(organism, confidence, tp, tn) %>%
+  mutate(total = tp + tn) %>%
+  gather(key = "variable", value = "value", -organism, -total, -confidence) %>%
+  mutate(ratio = value/total) %>%
+  mutate(variable = str_to_upper(variable)) %>%
+  mutate(ratio = (value / total) * 100)
+
+tp_tn_ratio_plot = ggplot(df_tp_tn_ratio, 
+                          aes(x=confidence, y=ratio, fill=variable)) +
+  geom_bar(stat = "identity") +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=16),
+        axis.text = element_text(size=14),
+        legend.text = element_text(size=14, margin = margin(r = 24, 
+                                                            unit = "pt")),
+        legend.title = element_blank(),
+        legend.position = "top"
+        ) +
+  guides(fill=guide_legend(
+    keywidth=0.2,
+    keyheight=0.2,
+    default.unit="inch",
+    ncol=2)) +
+  scale_fill_manual(values=c("#006165","#F6A800")) +
+  labs(x = "Confidence Level", y="Percentage [%]")
+
+ggsave(filename = "paper/figures/Figure4/Figure4d.png", 
+       plot = tp_tn_ratio_plot, device = "png", width=2.5, height=5)
+
+```
+
+```{r "overlap of mouse dorothea vs mouse trrust"}
+dorothea = read_csv(
+  "data/dorothea_benchmark/regulons/dorothea_regulon_mouse_v1.csv"
+  ) %>%
+  distinct(tf, confidence) %>%
+  mutate(resource = "DoRothEA") %>%
+  unite(resource, resource, confidence, remove = T)
+
+trrust = read_csv(
+  "data/dorothea_benchmark/regulons/trrust_regulon_mouse.csv"
+  ) %>%
+  distinct(tf) %>%
+  mutate(resource = "TRRUST")
+
+### upset plot
+df = bind_rows(dorothea, trrust) %>%
+  mutate(val = 1) %>%
+  spread(resource, val, fill=0) %>%
+  data.frame(row.names=1, check.names = F, stringsAsFactors = F)
+
+u = upset(df, sets = rev(names(df)), keep.order = T, order.by = "freq", 
+      decreasing = T, mainbar.y.label = "Shared TFs", 
+      sets.x.label = "Number of TFs per resource", text.scale = 1.5)
+
+### venn diagram
+overlap_dorothea_trrust = draw.pairwise.venn(
+  length(unique(dorothea$tf)), 
+  length(unique(trrust$tf)), 
+  length(intersect(dorothea$tf, trrust$tf)), 
+  category = c("DoRothEA", "TRRUST"),
+  fill = c("#A11035","#0098A1"),
+  cex=2,
+  alpha=0.3
+  ) %>%
+  as_ggplot()
+```
+
+```{r "similarity between mouse dorothea and mouse trrust"}
+similiartiy_scores = readRDS(
+  "output/dorothea_benchmark/similarity_analysis_dorothea_trrust.rds"
+)
+
+regulon_similarity_plot = similiartiy_scores %>% 
+  mutate(covered = str_to_title(covered)) %>%
+  spread(method, val) %>%
+  ggplot(aes(x=jaccard_index, y=overlap_coef, color=covered, size=n, 
+             label=label)) +
+  geom_point() +
+  geom_rug(inherit.aes = F, aes(x=jaccard_index, y = overlap_coef, 
+                                color=covered)) +
+  scale_color_manual(values = c("#CC071E","#57AB27")) +
+  lims(x = c(0,1), y=c(0,1)) +
+  labs(x = "Jaccard index", y="Overlap coefficient", size="#Covered", 
+       color="Covered?") +
+  background_grid(major = "xy", minor = "none", size.major = 0.4) +
+  theme(title = element_text(size=14),
+        axis.text = element_text(size=12),
+        legend.text = element_text(size=12),
+        legend.position = c(0.75, 0.7)
+        )
+
+```

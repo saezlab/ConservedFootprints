@@ -1,0 +1,309 @@
+---
+title: Translate human regulons to mouse regulons
+author: "Christian Holland"
+date: "09/04/2018"
+output: html_document
+---
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(broom)
+library(pROC)
+library(PRROC)
+library(viper)
+
+source("src/dorothea_analysis.R")
+source("src/roc_curve_analysis.R")
+```
+
+```{r "build regulons", eval=F, echo=F}
+# build human and moust TRRUST regulon
+path_trrust_human = "data/dorothea_benchmark/regulons/trrust_rawdata.human.tsv"
+path_trrust_mouse = "data/dorothea_benchmark/regulons/trrust_rawdata.mouse.tsv"
+
+human_trrust_regulon = read_tsv(
+  path_trrust_human,col_names = c("tf", "target", "mor","id")) %>%
+  mutate(sign = case_when(mor == "Repression" ~ -1,
+                          mor == "Activation" ~ 1,
+                          mor == "Unknown" ~ 0),
+         likelihood = 1) %>%
+  select(-c(mor, id)) %>%
+  rename(mor = sign)
+
+mouse_trrust_regulon = read_tsv(
+  path_trrust_mouse,col_names = c("tf", "target", "mor","id")) %>%
+  mutate(sign = case_when(mor == "Repression" ~ -1,
+                          mor == "Activation" ~ 1,
+                          mor == "Unknown" ~ 0),
+         likelihood = 1) %>%
+  select(-c(mor, id)) %>%
+  rename(mor = sign)
+
+write_csv(human_trrust_regulon, 
+          "data/dorothea_benchmark/regulons/trrust_regulon_human.csv")
+write_csv(mouse_trrust_regulon, 
+          "data/dorothea_benchmark/regulons/trrust_regulon_mouse.csv")
+```
+
+```{r "consider confidence score in benchmarking"}
+# load human regulons and subset regulons based on confidence score
+human_dorothea_all = read_csv(
+  "data/dorothea_benchmark/regulons/dorothea_regulon_human_v1.csv"
+  )
+
+human_dorothea_A = human_dorothea_all %>% 
+  filter(confidence  %in% c("A"))
+
+human_dorothea_AB = human_dorothea_all %>% 
+  filter(confidence  %in% c("A", "B"))
+
+human_dorothea_ABC = human_dorothea_all %>% 
+  filter(confidence  %in% c("A", "B", "C"))
+
+human_dorothea_ABCD = human_dorothea_all %>% 
+  filter(confidence  %in% c("A", "B", "C", "D"))
+
+human_dorothea_ABCDE = human_dorothea_all %>% 
+  filter(confidence  %in% c("A", "B", "C", "D", "E"))
+
+human_trrust_all = read_csv(
+  "data/dorothea_benchmark/regulons/trrust_regulon_human.csv"
+  )
+
+human_trrust_A = human_trrust_all %>%
+  filter(tf %in% unique(human_dorothea_A$tf))
+
+human_trrust_AB = human_trrust_all %>%
+  filter(tf %in% unique(human_dorothea_AB$tf))
+
+human_trrust_ABC = human_trrust_all %>%
+  filter(tf %in% unique(human_dorothea_ABC$tf))
+
+human_trrust_ABCD = human_trrust_all %>%
+  filter(tf %in% unique(human_dorothea_ABCD$tf))
+
+human_trrust_ABCDE = human_trrust_all %>%
+  filter(tf %in% unique(human_dorothea_ABCDE$tf))
+
+
+# load mouse regulons and subset regulons based on confidence score
+mouse_dorothea_all = read_csv(
+  "data/dorothea_benchmark/regulons/dorothea_regulon_mouse_v1.csv"
+  )
+
+mouse_dorothea_A = mouse_dorothea_all %>% 
+  filter(confidence  %in% c("A"))
+
+mouse_dorothea_AB = mouse_dorothea_all %>% 
+  filter(confidence  %in% c("A", "B"))
+
+mouse_dorothea_ABC = mouse_dorothea_all %>% 
+  filter(confidence  %in% c("A", "B", "C"))
+
+mouse_dorothea_ABCD = mouse_dorothea_all %>% 
+  filter(confidence  %in% c("A", "B", "C", "D"))
+
+mouse_dorothea_ABCDE = mouse_dorothea_all %>% 
+  filter(confidence  %in% c("A", "B", "C", "D", "E"))
+
+mouse_trrust_all = read_csv(
+  "data/dorothea_benchmark/regulons/trrust_regulon_mouse.csv"
+  )
+
+# find common tfs between dorothea and trrust and subset both to common ones
+mouse_common_tfs_A = intersect(mouse_dorothea_A$tf, mouse_trrust_all$tf)
+mouse_common_tfs_AB = intersect(mouse_dorothea_AB$tf, mouse_trrust_all$tf)
+mouse_common_tfs_ABC = intersect(mouse_dorothea_ABC$tf, mouse_trrust_all$tf)
+mouse_common_tfs_ABCD = intersect(mouse_dorothea_ABCD$tf, mouse_trrust_all$tf)
+mouse_common_tfs_ABCDE = intersect(mouse_dorothea_ABCDE$tf, mouse_trrust_all$tf)
+
+mouse_trrust_A = mouse_trrust_all %>%
+  filter(tf %in% mouse_common_tfs_A)
+mouse_dorothea_A_sub = mouse_dorothea_A %>%
+  filter(tf %in% mouse_common_tfs_A)
+
+mouse_trrust_AB = mouse_trrust_all %>%
+  filter(tf %in% mouse_common_tfs_AB)
+mouse_dorothea_AB_sub = mouse_dorothea_AB %>%
+  filter(tf %in% mouse_common_tfs_AB)
+
+mouse_trrust_ABC = mouse_trrust_all %>%
+  filter(tf %in% mouse_common_tfs_ABC)
+mouse_dorothea_ABC_sub = mouse_dorothea_ABC %>%
+  filter(tf %in% mouse_common_tfs_ABC)
+
+mouse_trrust_ABCD = mouse_trrust_all %>%
+  filter(tf %in% mouse_common_tfs_ABCD)
+mouse_dorothea_ABCD_sub = mouse_dorothea_ABCD %>%
+  filter(tf %in% mouse_common_tfs_ABCD)
+
+mouse_trrust_ABCDE = mouse_trrust_all %>%
+  filter(tf %in% mouse_common_tfs_ABCDE)
+mouse_dorothea_ABCDE_sub = mouse_dorothea_ABCDE %>%
+  filter(tf %in% mouse_common_tfs_ABCDE)
+
+# load dorothea benchmark data
+expr = readRDS("data/dorothea_benchmark/dorothea_benchmark_data.rds") %>%
+  select(-c(logFC, z)) %>%
+  select(expression = t, everything()) %>%
+  nest(-organism, .key=df)
+  
+# Design 
+design = tribble(
+  ~ confidence, ~organism, ~regulon, ~name,
+  "A", "mouse", mouse_dorothea_A, "dorothea",
+  "AB", "mouse", mouse_dorothea_AB, "dorothea",
+  "ABC", "mouse", mouse_dorothea_ABC, "dorothea",
+  "ABCD", "mouse", mouse_dorothea_ABCD, "dorothea",
+  "ABCDE", "mouse", mouse_dorothea_ABCDE, "dorothea",
+  "A", "mouse", mouse_trrust_all, "trrust",
+  "AB", "mouse", mouse_trrust_all, "trrust",
+  "ABC", "mouse", mouse_trrust_all, "trrust",
+  "ABCD", "mouse", mouse_trrust_all, "trrust",
+  "ABCDE", "mouse", mouse_trrust_all, "trrust"
+  # "A", "human", human_dorothea_A, "dorothea",
+  # "AB", "human", human_dorothea_AB, "dorothea",
+  # "ABC", "human", human_dorothea_ABC, "dorothea",
+  # "ABCD", "human", human_dorothea_ABCD, "dorothea",
+  # "ABCDE", "human", human_dorothea_ABCDE, "dorothea",
+  # "A", "human", human_trrust_A, "trrust",
+  # "AB", "human", human_trrust_AB, "trrust",
+  # "ABC", "human", human_trrust_ABC, "trrust",
+  # "ABCD", "human", human_trrust_ABCD, "trrust",
+  # "ABCDE", "human", human_trrust_ABCDE, "trrust"
+) %>% 
+  inner_join(expr, by="organism") %>%
+  mutate(missing_value = 0,
+         qc=T,
+         qc_th = 0)
+
+# access dorothea performance
+dorothea_performance = design %>%
+  mutate(activity = pmap(., .f = run_dorothea)) %>%
+  select(-c(missing_value, qc, qc_th)) %>%
+  filter_common_tfs() %>%
+  mutate(activity = activity %>% map(prepare_dorothea_for_roc,  
+                                     filter_tn = T)) %>%
+  select(organism, name, confidence, activity) %>%
+  mutate(roc = activity %>% map(calc_roc_curve),
+         pr = activity %>% map(calc_pr_curve),
+         roc_obj = activity %>% map(get_roc_object),
+         roc_downsampled = activity %>% map(calc_roc_curve, downsampling = T,
+                                        times = 3000)
+         )
+# statistical test if roc curves are different between mouse and human
+dorothea_performance = dorothea_performance %>%
+  select(organism, name, confidence, roc_obj) %>%
+  spread(name, roc_obj) %>%
+  mutate(stat = pmap(., .f = function(dorothea, trrust, ...) {
+    roc.test(dorothea, trrust) %>%
+      tidy() %>%
+      as_tibble() %>%
+      mutate_if(is.factor, as.character)
+  })) %>% 
+  gather(name, roc_obj, -confidence, -stat, -organism) %>%
+  select(-roc_obj) %>%
+  inner_join(dorothea_performance, by=c("confidence","organism", "name"))
+
+saveRDS(dorothea_performance, file="output/dorothea_benchmark/dorothea_benchmark_result.rds")
+
+
+# access performance scores
+# auroc
+dorothea_performance %>% 
+  unnest(roc) %>% 
+  unnest(ci) %>%
+  filter(ci == 0.95) %>% 
+  distinct(name, confidence, auc, lb, ub) %>%
+  filter(confidence == "AB")
+
+# test difference between aurocs
+dorothea_performance %>%
+  unnest(stat) %>%
+  distinct(name, confidence, p.value) %>% 
+  filter(confidence == "AB")
+
+# auprc
+dorothea_performance %>%
+  unnest(pr) %>%
+  distinct(name, auc, confidence) %>%
+  filter(confidence == "AB")
+```
+
+```{r "similarity between mouse dorothea and mouse trrust"}
+calc_jaccard_index = function(x) {
+  l = x %>% split(.$resource)
+  if (length(l) != 2) {
+    return(-1)
+  } else {
+    g1 = l %>% pluck(1) %>% select(one_of("target", "tf"))
+    g2 = l %>% pluck(2) %>% select(one_of("target", "tf"))
+    nrow(dplyr::intersect(g1, g2)) /  nrow(dplyr::union(g1, g2))
+    }
+}
+
+calc_overlap_coef = function(x) {
+  l = x %>% split(.$resource)
+  if (length(l) != 2) {
+    return(-1)
+  } else {
+    g1 = l %>% pluck(1) %>% select(one_of("target", "tf"))
+    g2 = l %>% pluck(2) %>% select(one_of("target", "tf"))
+    nrow(dplyr::intersect(g1, g2)) /  min(nrow(g1), nrow(g2))
+  }
+}
+
+dorothea = read_csv(
+  "data/dorothea_benchmark/regulons/dorothea_regulon_mouse_v1.csv"
+  ) %>%
+  select(tf, confidence, target) %>%
+  mutate(resource = "dorothea")
+
+trrust = read_csv(
+  "data/dorothea_benchmark/regulons/trrust_regulon_mouse.csv"
+  ) %>%
+  select(tf, target) %>%
+  mutate(resource = "trrust")
+
+dorothea_benchmark_results = readRDS(
+  "output/dorothea_benchmark/dorothea_benchmark_result.rds"
+  )
+
+common_tfs = intersect(dorothea$tf, trrust$tf)
+
+df = bind_rows(dorothea, trrust) %>%
+  filter(tf %in% common_tfs)
+
+similiartiy_scores = df %>%
+  nest(-tf) %>%
+  mutate(jaccard_index = map(data, calc_jaccard_index)) %>%
+  mutate(overlap_coef = map(data, calc_overlap_coef)) %>%
+  select(-data) %>%
+  gather(method, val, jaccard_index, overlap_coef) %>%
+  unnest(val)
+
+tfs_covered = dorothea_benchmark_results %>% 
+  filter(organism == "mouse" & confidence == "ABCDE" & name == "dorothea") %>% 
+  unnest(activity) %>% 
+  filter(response == 1) %>% 
+  count(tf)
+
+res = similiartiy_scores %>%
+  full_join(tfs_covered, by="tf") %>%
+  replace_na(list(n=0)) %>%
+  mutate(covered = case_when(n>1 ~ "yes",
+                             TRUE ~ "no")) %>%
+  mutate(label = case_when(covered == "yes" ~ tf,
+                           TRUE ~ ""))
+
+saveRDS(res,"output/dorothea_benchmark/similarity_analysis_dorothea_trrust.rds")
+```

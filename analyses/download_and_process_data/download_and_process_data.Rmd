@@ -1,0 +1,587 @@
+---
+title: "Download and process data for single drug/single gene/disease signatures"
+author: "Christian Holland"
+date: "05/03/2018"
+output: html_document
+---
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(Biobase)
+library(limma)
+library(yaml)
+library(biobroom)
+library(broom)
+library(modules)
+library(ArrayExpress)
+library(viper)
+ma = import("src/ebits/process/microarray")
+
+source("src/dorothea_analysis.R")
+source("src/progeny_analysis.R")
+source("src/download_and_process_data.R")
+```
+
+```{r "bences yaml files to df"}
+# in order to treat bences file similar to collection from CREEDs I translated 
+# Bences yaml files to a data frame
+yaml_paths = list.files("data/pathway_analysis/mmus_exp_from_bence/index", 
+                        full.names = T, recursive = T)
+
+yaml = map_df(yaml_paths, function(path) {
+  read_yaml(path) %>%
+    map_df(function(y) {
+      c = y$control
+      p = y$perturbed
+  
+      y$perturbed = NULL
+      y$control = NULL
+  
+      y %>%
+        as_tibble() %>%
+        mutate(info = as.character(info)) %>%
+        mutate(control = list(c),
+               perturbed = list(p),
+               from = "bence") %>%
+        gather(group, sample, -c(id, accession, pathway, platform, info,
+                                 treatment, effect, organism, source, from)) %>%
+        unnest() %>%
+        mutate(sign = case_when(effect == "activating" ~ 1,
+                                effect == "inhibiting" ~ -1))
+    })
+  })
+
+saveRDS(yaml, "data/progeny_benchmark/bences_benchmark_exps.rds")
+```
+
+```{r "progeny benchmark"}
+# annotation file to annotate drug/gene to pathway perturbation
+annotation = read_delim("data/creeds/drug_gene_pathway_association.csv", 
+                        delim=";") 
+
+# load single gene perturbation file from CREEDs
+single_gene = read_delim("data/creeds/single_gene_perturbations-v1.0.csv", 
+                         delim = ",") %>%
+  select(-c(chdir_norm, curator, version)) %>%
+  filter(organism != "rat")
+
+# load single drug perturbation file from CREEDs
+single_drug = read_delim("data/creeds/single_drug_perturbations-v1.0.csv", 
+                         delim=",") %>%
+  select(-c(curator, drugbank_id, pubchem_cid, smiles, version)) %>%
+  filter(organism != "rat")
+
+# load bences benchmark data
+bence_drug = readRDS("data/progeny_benchmark/bences_benchmark_exps.rds")
+
+
+# fix database errors
+wrong_pert_type = c("gene:506")
+remove_pert_type = c("Mutation", "mutation")
+confused_samples = c("drug:3256")
+bad_pert_exps = c("drug:2533", "gene:2745")
+wrong_organism = c("gene:314", "gene:2259", "drug:3288")
+
+confused_drug_samples = single_drug %>%
+  filter(id %in% confused_samples) %>%
+  mutate(tmp = ctrl_ids,
+         ctrl_ids = pert_ids,
+         pert_ids = tmp) %>%
+  select(-tmp)
+
+confused_gene_samples = single_gene %>%
+  filter(id %in% confused_samples) %>%
+  mutate(tmp = ctrl_ids,
+         ctrl_ids = pert_ids,
+         pert_ids = tmp) %>%
+  select(-tmp)
+
+sub_single_gene = single_gene %>%
+  filter(!(id %in% bad_pert_exps)) %>%
+  filter(!(pert_type %in% remove_pert_type)) %>%
+  filter(!(id %in% confused_samples)) %>%
+  mutate(pert_type = replace(pert_type, id == "gene:506", "overexpression")) %>%
+  mutate(organism = case_when(id %in% wrong_organism~recode(organism, 
+                                                            "mouse" = "human",
+                                                            "human" = "mouse"),
+                              TRUE ~ organism)) %>%
+  bind_rows(confused_gene_samples)
+
+sub_single_drug = single_drug %>%
+  filter(!(id %in% bad_pert_exps)) %>%
+  filter(!(id %in% confused_samples)) %>%
+  mutate(organism = case_when(id %in% wrong_organism~recode(organism, 
+                                                            "mouse" = "human",
+                                                            "human" = "mouse"),
+                              TRUE ~ organism)) %>%
+  bind_rows(confused_drug_samples)
+
+# mapping drug perturbation to either overexpression or knockdown
+knockdown_mapping = tibble(
+  pert_type = c("KO", "KD", "druginhibition", "Drug inhibition","deletion",
+           "DEPLETION - siRNA siMut12","DEPLETION - siRNA siMut10", "deletion",
+           "INHIBITION","deficiency", "DELETION", " Inactivation",
+           "DEPLETION", "siTNF-OMe", "siTNF",
+           "siTNF-OMeP", "NULL MUTATION", "knockout", "Deletion", "Deficiency",
+           "Inactivation  (IKK Inhibition)",
+           "INHIBITION  (ERK inhibitor U0126)", "VR", "L540Q point mutation",
+           "Stat1 delta alpha (da), deficient for STAT1 dimer with C-termina",
+           "Stat1 delta beta (db), deficient for STAT1 dimer without C-termi",
+           " APC(Min/+) mutant", "Drug","knockdown")
+  ) %>%
+  mutate(perturbation = "knockdown",
+         sign=-1)
+
+overexpression_mapping = tibble(
+  pert_type =  c("OE", "beta-catenin S37A mutant",
+           "Constitutional activation", "Stimulation of gene product",
+           "drugactivation", "activemutant", "mutant",
+           "Selective cardiac induced overexpression of the gene for in male",
+           "Actvation of gene product","Induction",
+           "Activation (deltaNB-cateninER transgenics)",
+           "overexpression", "PTEN F341V", NA,
+           "transient expression of constitutively active IKK&Icirc;&sup2;(E",
+           "expression of a constitutively active allele of the I&Icirc;&ord",
+           "Activation")
+  ) %>%
+  mutate(perturbation = "overexpression",
+         sign = 1)
+
+effect_mapping = bind_rows(knockdown_mapping, overexpression_mapping)
+
+# transfrom CREEDs database to a tidy format
+progeny_drug = inner_join(sub_single_drug, 
+                          select(annotation, 
+                                 drug_name = `DRUG or GENE`, 
+                                 everything()),
+                          by="drug_name") %>%
+  mutate(effect = case_when(Direction == 1 ~ "activating",
+                            Direction == -1 ~ "inhibiting")) %>%
+  mutate(sign = case_when(effect == "activating" ~ 1,
+                          effect == "inhibiting" ~ -1)) %>%
+  select(pathway = "PROGENy", pert_ids, ctrl_ids, id, info = cell_type, 
+         treatment = drug_name, accession = geo_id, organism, platform, 
+         effect, sign) %>%
+  mutate(source = "single drug perturbation")
+
+# generation PROGENy gene perturbation benchmark data
+progeny_gene = inner_join(sub_single_gene, 
+                          select(annotation, 
+                                 hs_gene_symbol = `DRUG or GENE`, 
+                                 everything()),
+                          by="hs_gene_symbol") %>%
+  full_join(effect_mapping, by="pert_type") %>%
+  unite(treatment, perturbation, hs_gene_symbol, sep = "_", remove = F) %>%
+  mutate(
+    effect = case_when(
+      Direction == 1 & perturbation == "knockdown" ~ "inhibiting",
+      Direction == 1 & perturbation == "overexpression" ~ "activating",
+      Direction == -1 & perturbation == "knockdown" ~ "activating",
+      Direction == -1 & perturbation == "overexpression" ~ "inhibiting")
+    ) %>%
+  select(pathway = "PROGENy", pert_ids, ctrl_ids, id, info = cell_type, 
+         treatment, accession = geo_id, organism, platform, 
+         effect, sign) %>%
+  mutate(source = "single gene perturbation")
+
+# combine drug and gene perturbation benchmark data
+progeny = bind_rows(progeny_drug, progeny_gene) %>%
+  mutate(info = case_when(is.na(info) ~ "No info",
+                          TRUE ~ info)) %>%
+  gather(key = group, sample, c(ctrl_ids, pert_ids)) %>%
+  separate(sample, into = unique(c(paste0(sample(letters),
+                                   sample(letters), 
+                                   sample(letters)),
+                            paste0(sample(letters),
+                                   sample(letters), 
+                                   sample(letters)),
+                            paste0(sample(letters),
+                                   sample(letters), 
+                                   sample(letters))))) %>%
+  gather(tmp, sample, -c(id, pathway, group, info, treatment, accession, 
+                         organism, platform, effect, sign, source)) %>%
+  na.omit() %>%
+  select(-tmp) %>%
+  mutate(group = case_when(group == "pert_ids" ~ "perturbed",
+                           group == "ctrl_ids" ~ "control")) %>%
+  arrange(id, group, sample) %>%
+  mutate(from = "creeds") %>%
+  bind_rows(bence_drug)
+
+
+# generate benchmark data
+expr_path = list.files("data/progeny_benchmark/processed", 
+                       full.names = T, recursive = T) %>%
+  tibble(expr_path = .) %>%
+  separate(expr_path, into=c("dir1", "dir2", "dir3", "pathway", "accession"), 
+           sep="/", remove = F) %>%
+  separate(accession, into=c("accession", "ext"), sep=-6) %>%
+  select(expr_path, accession, pathway)
+
+progeny_benchmark_data = inner_join(progeny, expr_path, by=c("accession", 
+                                                             "pathway")) %>%
+  nest(-c(id)) %>%
+  mutate(expr = data %>% map(match_samples)) %>%
+  mutate(contrast = expr %>% map(calc_contrast)) %>%
+  select(id, contrast) %>%
+  unnest(contrast)
+
+saveRDS(progeny_benchmark_data, 
+        file="data/progeny_benchmark/progeny_benchmark_data.rds")
+```
+
+```{r "dorothea benchmark "}
+# load list of all human tfs
+tfs = read_delim("data/creeds/tf_census.txt", delim=";", col_names = "tf") 
+
+# load single gene perturbation file from CREEDs
+single_gene = read_delim("data/creeds/single_gene_perturbations-v1.0.csv", 
+                         delim = ",") %>%
+  select(-c(chdir_norm, curator, version)) %>%
+  filter(organism != "rat")
+
+# fix database errors
+remove_pert_type = c("homozygous Srf mutant (non-binding Srf treatment)",
+           "homozygous Srf mutant 100 (non-binding Srf treatment)",
+           "homozygous Srf mutant 81 (non-binding Srf treatment)",
+           "homozygous Srf mutant 81 (vector control treatment)",
+           "homozygous Srf mutant 81 (constitutive Srf treatment)",
+           "homozygous Srf mutant (constitutive Srf treatment)",
+           "knock-out (female)", "knock-out (male)", "DeltaN mutation",
+           "Truncated Expression ( GATA-1deltaNeodeltaHS mutant)",
+           "Snell mutant PIT1-dw", "low-affinity mutant",
+           "hNR1I3 KI (in mNR1I3-/- background)", "gene truncation", "Mutation",
+           "Deficiency - NULL MUTATION", "Null mutation", "NULL MUTATION",
+           "DN", "NULL mutation", "mutant","HCC mutant al", "RCCC mutant 6a",
+           "HCC mutant bN", "RCCC mutant 15b",
+           "IkL/L Mutation", "L540Q point mutation",
+           "EWS-FLI1 fusion protein expression",
+           "MLL chromosomal translocation (tMLL) compared to partial tandem ",
+           "VR", NA)
+
+confused_samples = c("gene:34", "gene:118", "gene:2190", "gene:1079", 
+                     "gene:1516")
+wrong_organism = c("gene:1004", "gene:1257", "gene:2903")
+
+confused_gene_samples = single_gene %>%
+  filter(id %in% confused_samples) %>%
+  mutate(tmp = ctrl_ids,
+         ctrl_ids = pert_ids,
+         pert_ids = tmp) %>%
+  select(-tmp)
+
+sub_single_gene = single_gene %>%
+  filter(!(pert_type %in% remove_pert_type)) %>%
+  filter(!(id %in% confused_samples)) %>%
+  mutate(organism = case_when(id %in% wrong_organism~recode(organism, 
+                                                            "mouse" = "human",
+                                                            "human" = "mouse"),
+                              TRUE ~ organism)) %>%
+  mutate(mm_gene_symbol = replace(mm_gene_symbol, id %in% c("gene:673", 
+                                                            "gene:2613", "gene:2159"), "Esrra"),
+         mm_gene_symbol = replace(mm_gene_symbol, id %in% c("gene:48", 
+                                                            "gene:2563", "gene:2564"), "Hmga2"),
+         mm_gene_symbol = replace(mm_gene_symbol, id %in% c("gene:2698"), "Foxo3"),
+         mm_gene_symbol = replace(mm_gene_symbol, id %in% c("gene:2618"), "Pou3f3"),
+         mm_gene_symbol = replace(mm_gene_symbol, id %in% c("gene:3010"), "Tcf7")) %>%
+  bind_rows(confused_gene_samples)
+
+
+# mapping gene perturbation to overexpression or knockdown
+knockdown_mapping = tibble(
+  pert_type = c("KO", "KD", "DEPLETION",
+           "knock-out (treated with 2 ug/ml tunicamycin for 4 hours)",
+           "knock-out (treated with 2 ug/ml tunicamycin for 8 hours)",
+           "Depletion (with phorbol 12-myristate 13-acetate agent treatment)",
+           "Deficiency", "deficiency", "INACTIVATION",
+           "NULL MUTATION - Ablation",
+           "Overexpression of a dominant negative form",
+           "Deletion - for the second exon ", "Mutation - (ERR-beta; NR3B2)",
+           " ABLATION ",
+           "Stat1 delta alpha (da), deficient for STAT1 dimer with C-termina",
+           "Stat1 delta beta (db), deficient for STAT1 dimer without C-termi",
+           "Conditional KO under Crx promoter",
+           "V290M dominant negative mutation", "Myc +/- vs. WT",
+           "myc +/- vs. WT",
+           "Mutation - MyoD altered at lysine residues 99, 102, and 104, ren",
+           "IkL/L mutation",
+           "d337T mutation - dominant negative", "Induction",
+           "Mutation - TAp63alpha-Q540L missense mutation in the SAM domain",
+           "depletion (treatment with phorbol 12-myristate 13-acetate)",
+           "INACTIVATION - siRNA",
+           "silencing",
+           "knock-down using shRNA targeting p63 transactivating (TA) domain",
+           "RNAi Knock down", "Inhibition -  (laccaic acid A)",
+           "INHIBITION - EPZ004777","Inactivation  (IKK Inhibition)",
+           "INHIBITION", "DELETION", "Silencing",
+           "Drug inhibition (X5050)",
+           "Silencing - siRNA2", "Silencing - siRNA1", "Silencing - siRNA3",
+           "Q119X Homozygous Mutation", "Deletion",
+           "ablation S105 phosphorylation site",
+           "heterozygous de novo RTT mutations")
+  ) %>%
+  mutate(perturbation = "knockdown",
+         sign=-1)
+
+overexpression_mapping = tibble(
+  pert_type =  c("OE", "Activation - 4 hours", "Activation - 2 hours",
+           "Activation - 24 hours", "Activation - 8 hours",
+           "Activation - 21 days", "agonist activation",
+           "Actvation of gene product", "expression by viral transduction",
+           "tamoxifen-induced activation", "Knock-in", "knock-in", "Knockin",
+           "Expression",
+           "Conditional expression (induced with doxycycline)",
+           "Ectopic expression - (transgenic AIRE overexpression)",
+           "Ectopic expression - (NRL null retinas expressing NR2E3)",
+           "expression of XBP1s, an spliced version of the protein",
+           "JoMa1 cells are pluripotent precursor cells, derived from the ne",
+           "Ectopic expression",
+           "Over-expression - (HNF1beta A263insGG mutant)",
+           "Activation","Activation - AM580 (RARA Agonist)",
+           "Over-expression of TAp63&Icirc;&sup3; isoform",
+           "Over-expression of &Icirc;â€\u009dNp63&Icirc;&plusmn; isoform lacking",
+           "stable IRF7 transfection (pMSCV)", "Oncogenic mutation",
+           "FOXP3 2T&gt;C(mut)")
+  ) %>%
+  mutate(perturbation = "overexpression",
+         sign = 1)
+effect_mapping = bind_rows(knockdown_mapping, overexpression_mapping)
+
+
+# subset single gene pertrubation file to human tfs and convert it to tidy
+# data frame
+dorothea = inner_join(sub_single_gene, 
+                      select(tfs, hs_gene_symbol = tf, everything()),
+                          by="hs_gene_symbol") %>%
+  full_join(effect_mapping, by="pert_type") %>%
+  mutate(tf = case_when(organism == "human" ~ hs_gene_symbol,
+                        organism == "mouse" ~ mm_gene_symbol)) %>%
+  select(tf, pert_ids, ctrl_ids, id, info = cell_type, accession = geo_id, 
+         organism, platform, effect=perturbation, sign, hs_gene_symbol) %>%
+  mutate(info = case_when(is.na(info) ~ "No info",
+                          TRUE ~ info)) %>%
+  gather(key = group, sample, -c(id, tf, info, accession, organism, platform, 
+                                 effect, sign, hs_gene_symbol)) %>%
+  separate(sample, into = c(paste0(sample(letters),
+                                   sample(letters), 
+                                   sample(letters)),
+                            paste0(sample(letters),
+                                   sample(letters), 
+                                   sample(letters)),
+                            paste0(sample(letters),
+                                   sample(letters), 
+                                   sample(letters)))) %>%
+  gather(tmp, sample, -c(id, tf, group, info, accession, organism, platform, 
+                         effect, sign, hs_gene_symbol)) %>%
+  na.omit() %>%
+  select(-tmp) %>%
+  mutate(group = case_when(group == "pert_ids" ~ "perturbed",
+                           group == "ctrl_ids" ~ "control"),
+         source = "single gene perturbation") %>%
+  arrange(id, group, sample) %>%
+  mutate(from = "creeds")
+
+# generate benchmark data
+expr_path = list.files("data/dorothea_benchmark/processed", 
+                       full.names = T, recursive = T) %>%
+  tibble(expr_path = .) %>%
+  separate(expr_path, into=c("dir1", "dir2", "dir3", "hs_gene_symbol", 
+                             "accession"), 
+           sep="/", remove = F) %>%
+  separate(accession, into=c("accession", "ext"), sep=-6) %>%
+  select(expr_path, accession, hs_gene_symbol)
+
+
+dorothea_benchmark_data = inner_join(dorothea, expr_path, by=c("accession", 
+                                                               "hs_gene_symbol")) %>%
+  nest(-c(id)) %>%
+  mutate(expr = data %>% map(match_samples)) %>%
+  mutate(contrast = expr %>% map(calc_contrast)) %>%
+  select(id, contrast) %>%
+  unnest(contrast)
+
+saveRDS(dorothea_benchmark_data, 
+        file="data/dorothea_benchmark/dorothea_benchmark_data.rds")
+```
+
+```{r "disease signatures"}
+# create data frame with gene expression of all disease signatures
+# load disease signature file from CREEEds
+disease_df = read_delim("data/creeds/disease_signatures-v1.0.csv", 
+                        delim = ",") %>%
+  dplyr::select(-c(curator, umls_cui, version)) %>%
+  dplyr::filter(organism != "rat")
+
+# correcte database error
+wrong_organism = c("dz:724")
+
+fixed_disease_df = disease_df %>%
+  mutate(organism = case_when(id %in% wrong_organism~recode(organism, 
+                                                            "mouse" = "human",
+                                                            "human" = "mouse"),
+                              TRUE ~ organism))
+
+# transform CREEDs df to tidy format
+disease = fixed_disease_df %>%
+  dplyr::mutate(do_id =case_when(is.na(do_id) ~ "DOID:0",
+                          TRUE ~ do_id)) %>%
+  gather(key = group, sample, c(ctrl_ids, pert_ids)) %>%
+  separate_rows(sample, sep="[|]") %>%
+  dplyr::select(info = cell_type, accession = geo_id, everything()) %>%
+  na.omit() %>%
+  mutate(group = case_when(group == "pert_ids" ~ "perturbed",
+                           group == "ctrl_ids" ~ "control"))
+  
+  
+saveRDS(disease, "output/disease_enrichment/disease_annotation.rds")
+
+y = disease %>%
+  mutate(save_path = "data/disease_enrichment/processed") %>%
+  nest(-c(accession, save_path)) %>%
+  filter(accession != "GSE10631") %>%
+  filter(accession == "GSE3248") %>%
+  mutate(x = pmap(., .f=download_and_process))
+
+disease_expr = list.files("data/disease_enrichment/processed", 
+                          full.names = T) %>%
+  map_df(function(e) {
+    get(load(e))
+  }) %>%
+  mutate(source = "disease signature")
+
+saveRDS(disease_expr, "data/disease_enrichment/disease_expr.rds")
+```
+
+```{r "single drug perturbation"}
+# download and process all single drug perturbation experiments
+single_drug = read_delim("data/creeds/single_drug_perturbations-v1.0.csv", 
+                         delim=",") %>%
+  select(-c(curator, drugbank_id, pubchem_cid, smiles, version)) %>%
+  filter(organism != "rat")
+
+
+# fix database errors
+confused_samples = c("drug:3256")
+wrong_organism = c("drug:3288")
+
+confused_drug_samples = single_drug %>%
+  filter(id %in% confused_samples) %>%
+  mutate(tmp = ctrl_ids,
+         ctrl_ids = pert_ids,
+         pert_ids = tmp) %>%
+  select(-tmp)
+
+
+fixed_single_drug = single_drug %>%
+  filter(!(id %in% confused_samples)) %>%
+  mutate(organism = case_when(id %in% wrong_organism~recode(organism, 
+                                                            "mouse" = "human",
+                                                            "human" = "mouse"),
+                              TRUE ~ organism)) %>%
+  bind_rows(confused_drug_samples)
+
+drug = fixed_single_drug %>%
+  mutate(cell_type = case_when(is.na(cell_type) ~ "No info",
+                               TRUE ~ cell_type)) %>%
+  gather(key = group, sample, c(ctrl_ids, pert_ids)) %>%
+  separate_rows(sample, sep = "[|]") %>%
+  dplyr::select(info = cell_type, accession = geo_id, everything()) %>%
+  na.omit() %>%
+  mutate(group = case_when(group == "pert_ids" ~ "perturbed",
+                           group == "ctrl_ids" ~ "control"))
+
+saveRDS(drug, "output/single_drug_gene_resource/drug_annotation.rds")
+
+y = drug %>%
+  mutate(save_path = "data/single_drug_gene_resource/processed/single_drug") %>%
+  nest(-c(accession, save_path)) %>%
+  mutate(x = pmap(., .f=download_and_process))
+
+all_single_drug = list.files(
+  "data/single_drug_gene_resource/processed/single_drug", 
+                          full.names = T
+  ) %>%
+  map_df(function(e) {
+    get(load(e))
+  }) %>%
+  mutate(source = "single drug perturbation")
+
+saveRDS(all_single_drug, 
+        "output/single_drug_gene_resource/drug_perturbations.rds")
+
+```
+
+```{r "single gene perturbation"}
+# download and process all single gene perturbation experiments
+single_gene = read_delim("data/creeds/single_gene_perturbations-v1.0.csv", 
+                         delim = ",") %>%
+  select(-c(chdir_norm, curator, version)) %>%
+  filter(organism != "rat")
+
+
+# fix database errors
+confused_samples = c()
+wrong_organism = c("gene:314", "gene:2259")
+
+confused_gene_samples = single_gene %>%
+  filter(id %in% confused_samples) %>%
+  mutate(tmp = ctrl_ids,
+         ctrl_ids = pert_ids,
+         pert_ids = tmp) %>%
+  select(-tmp)
+
+fixed_single_gene = single_gene %>%
+  filter(!(id %in% confused_samples)) %>%
+  mutate(organism = case_when(id %in% wrong_organism~recode(organism, 
+                                                            "mouse" = "human",
+                                                            "human" = "mouse"),
+                              TRUE ~ organism)) %>%
+  bind_rows(confused_gene_samples)
+
+
+gene = fixed_single_gene %>%
+  mutate(cell_type = case_when(is.na(cell_type) ~ "No info",
+                               TRUE ~ cell_type),
+         hs_gene_symbol = case_when(is.na(hs_gene_symbol) ~ 
+                                      "No target information",
+                                    TRUE ~ hs_gene_symbol),
+         mm_gene_symbol = case_when(is.na(mm_gene_symbol) ~ 
+                                      "No target information",
+                                    TRUE ~ mm_gene_symbol),
+         pert_type = case_when(is.na(pert_type) ~ "No perturbation information",
+                                    TRUE ~ pert_type)) %>%
+  gather(key = group, sample, c(ctrl_ids, pert_ids)) %>%
+  separate_rows(sample, sep = "[|]") %>%
+  dplyr::select(info = cell_type, accession = geo_id, everything()) %>%
+  na.omit() %>%
+  mutate(group = case_when(group == "pert_ids" ~ "perturbed",
+                           group == "ctrl_ids" ~ "control"))
+
+saveRDS(gene, "output/single_drug_gene_resource/gene_annotation.rds")
+
+y = gene %>%
+  mutate(save_path = "data/single_drug_gene_resource/processed/single_gene") %>%
+  nest(-c(accession, save_path)) %>%
+  mutate(x = pmap(., .f=download_and_process))
+
+all_single_gene = list.files(
+  "data/single_drug_gene_resource/processed/single_gene", 
+                          full.names = T
+  ) %>%
+  map_df(function(e) {
+    get(load(e))
+  }) %>%
+  mutate(source = "single gene perturbation")
+
+saveRDS(all_single_gene, 
+        "output/single_drug_gene_resource/gene_perturbations.rds")
+```

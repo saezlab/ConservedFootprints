@@ -1,0 +1,104 @@
+---
+title: "single_drug_gene_resource"
+author: "Christian Holland"
+date: "26/09/2018"
+output: html_document
+---
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(viper)
+library(pheatmap)
+
+source("src/dorothea_analysis.R")
+source("src/progeny_analysis.R")
+```
+
+```{r "calulcate progeny dorothea scores for all single drug/gene exps"}
+# load data
+drug = readRDS("output/single_drug_gene_resource/drug_perturbations.rds")
+gene = readRDS("output/single_drug_gene_resource/gene_perturbations.rds")
+
+# load model matrices
+M_human = read.csv("data/progeny_benchmark/models/progeny_matrix_human_v1.csv",
+                   row.names=1, check.names = F)
+
+M_mouse = read.csv("data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv"
+                   ,row.names=1, check.names = F)
+# load regulons
+human_dorothea_all = read_csv(
+  "data/dorothea_benchmark/regulons/dorothea_regulon_human_v1.csv"
+  )
+
+mouse_dorothea_all = read_csv(
+  "data/dorothea_benchmark/regulons/dorothea_regulon_mouse_v1.csv"
+  )
+
+# somehow memory is not enough to perfrom all steps in one pipe
+expr_tmp_1 = bind_rows(drug, gene)
+expr_tmp_2 = expr_tmp_1 %>% select(id, gene, expression = t, info, organism, source)
+expr = expr_tmp_2 %>% nest(-c(organism, source), .key=df)
+
+design = tribble(
+  ~source, ~organism, ~regulon, ~M,
+  "single drug perturbation", "mouse", mouse_dorothea_all, M_mouse,
+  "single gene perturbation", "mouse", mouse_dorothea_all, M_mouse,
+  "single drug perturbation", "human", human_dorothea_all, M_human,
+  "single gene perturbation", "human", human_dorothea_all, M_human
+) %>% 
+  inner_join(expr, by=c("source", "organism")) %>%
+  mutate(qc=F,
+         qc_th = 0)
+
+df = design %>% 
+  mutate(dorothea = pmap(., .f = run_dorothea),
+         progeny = pmap(., .f = run_progeny)) %>%
+  select(source, organism, dorothea, progeny)
+
+saveRDS(df, "output/single_drug_gene_resource/progeny_dorothea_scores.rds")
+```
+
+```{r "heatmaps"}
+df = readRDS("output/single_drug_gene_resource/progeny_dorothea_scores.rds")
+
+p = df %>% unnest(progeny) %>%
+  select(id, feature = progeny_pathway, activity=score, organism, source) %>%
+  mutate(method = "progeny")
+
+d = df %>% unnest(dorothea) %>%
+  select(id, feature = d_tf, activity = d_score, organism, source) %>%
+  mutate(method = "dorothea")
+
+dat = bind_rows(p,d) %>%
+  group_by(organism, source, feature) %>%
+  mutate(activity = scale(activity)) %>%
+  ungroup() %>%
+  nest(-c(organism, source, method))
+
+heatmaps = dat %>%
+  mutate(matrix = data %>% map(~data.frame(spread(., id, activity), 
+                                        row.names=1, check.names = F))) %>%
+  mutate(cor_matrix = matrix %>% map(~cor(.))) %>%
+  mutate(heatmap = matrix %>% map(~pheatmap(., treeheight_row = 0, 
+                                            treeheight_col = 0, 
+                                            show_rownames = F, 
+                                            show_colnames = F))) %>%
+  mutate(cor_heatmap = cor_matrix %>% map(~pheatmap(., treeheight_row = 0, 
+                                                    treeheight_col = 0, 
+                                                    show_rownames = F, 
+                                                    show_colnames = F))) %>%
+  select(organism, source, method, heatmap, cor_heatmap)
+
+saveRDS(heatmaps, "output/single_drug_gene_resource/heatmaps.rds")
+
+x = readRDS("output/single_drug_gene_resource/heatmaps.rds")
+```
