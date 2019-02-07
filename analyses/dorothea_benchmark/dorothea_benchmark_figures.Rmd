@@ -106,10 +106,6 @@ regulon_properties_plot = regulon_properties %>%
     title = "DoRothEA Confidence Level",
     default.unit="inch",
     ncol=5))
-
-ggsave(filename = "paper/figures/Figure3/Figure3a.png", 
-       plot = regulon_properties_plot, device = "png", width=6.5, height=5)
-
 ```
 
 ```{r "tf coverage"}
