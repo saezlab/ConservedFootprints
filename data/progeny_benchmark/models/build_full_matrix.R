@@ -8,7 +8,8 @@ e = read_csv("data/progeny_benchmark/models/sub/full_model_extended.csv") %>%
   filter(pathway %in% c("Androgen", "Estrogen", "WNT"))
 
 # combine both matrices to a the full matrix containing all 14 pathways
-full_matrix = bind_rows(o, new_pws)
+full_matrix = bind_rows(o, new_pws) %>%
+  drop_na()
 
 write_csv(full_matrix, 
           "data/progeny_benchmark/models/progeny_matrix_human_full_v1.csv")
