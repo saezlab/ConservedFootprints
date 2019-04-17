@@ -70,7 +70,7 @@ ggsave("paper/figures/FigureS3.png", figS3, width = 10, height=10)
 ```{r "Figure S4"}
 figS4_1 = plot_grid(regulon_properties_plot, tf_coverage_plot, labels = c("A", "B"), rel_widths = c(2,1))
 figS4_2 = plot_grid(tp_tn_ratio_plot, auroc_downsampled_plot, labels = c("C", "D"), rel_widths = c(1,1))
-figS4 = plot_grid(figS3_1, figS3_2, ncol=1)
+figS4 = plot_grid(figS4_1, figS4_2, ncol=1)
 ggsave("paper/figures/FigureS4.png", figS4, width = 10, height=10)
 ```
 
