@@ -198,19 +198,8 @@ progeny = bind_rows(progeny_drug, progeny_gene) %>%
   mutate(info = case_when(is.na(info) ~ "No info",
                           TRUE ~ info)) %>%
   gather(key = group, sample, c(ctrl_ids, pert_ids)) %>%
-  separate(sample, into = unique(c(paste0(sample(letters),
-                                   sample(letters), 
-                                   sample(letters)),
-                            paste0(sample(letters),
-                                   sample(letters), 
-                                   sample(letters)),
-                            paste0(sample(letters),
-                                   sample(letters), 
-                                   sample(letters))))) %>%
-  gather(tmp, sample, -c(id, pathway, group, info, treatment, accession, 
-                         organism, platform, effect, sign, source)) %>%
-  na.omit() %>%
-  select(-tmp) %>%
+  separate_rows(sample) %>%
+  drop_na() %>%
   mutate(group = case_when(group == "pert_ids" ~ "perturbed",
                            group == "ctrl_ids" ~ "control")) %>%
   arrange(id, group, sample) %>%
