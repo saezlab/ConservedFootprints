@@ -112,20 +112,19 @@ regulon_properties_plot = regulon_properties %>%
 df_coverage = readRDS("output/dorothea_benchmark/dorothea_benchmark_result.rds") %>%
   filter(organism == "mouse") %>%
   unnest(roc) %>%
-  distinct(organism, confidence, name, coverage)
+  distinct(organism, confidence, coverage)
   
 tf_coverage_plot = df_coverage %>%
   ggplot(aes(x = confidence, y=coverage, fill=confidence)) +
   geom_col() +
   scale_fill_manual(values = brewer.pal(9,"BuGn")[c(3,4,6,7,8)]) +
-  labs(x="DoRothEA Confidence Level", y="TF Coverage") +
+  labs(x = sprintf("DoRothEA \u2229 TRRUST", y="TF Coverage")) +
   background_grid(major = "xy", minor = "none", size.major = 0.4) +
   theme(title = element_text(size=16),
         axis.text = element_text(size=14),
         axis.text.x = element_text(angle = 45, hjust=1),
         legend.text = element_text(size=14),
-        legend.position = "none",
-        axis.title.x = element_blank())
+        legend.position = "none")
 ```
 
 ```{r "auroc vs confidence level"}
