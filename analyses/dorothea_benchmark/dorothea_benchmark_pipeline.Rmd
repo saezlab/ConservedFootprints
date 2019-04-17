@@ -300,7 +300,7 @@ tfs_covered = dorothea_benchmark_results %>%
 res = similiartiy_scores %>%
   full_join(tfs_covered, by="tf") %>%
   replace_na(list(n=0)) %>%
-  mutate(covered = case_when(n>1 ~ "yes",
+  mutate(covered = case_when(n>=1 ~ "yes",
                              TRUE ~ "no")) %>%
   mutate(label = case_when(covered == "yes" ~ tf,
                            TRUE ~ ""))
