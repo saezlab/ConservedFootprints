@@ -12,69 +12,119 @@ knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 knitr::knit(..., quiet = TRUE)
 ```
 
-### Libraries and sources
-These libraries and sources are used in this analysis 
+
 ```{r "setup", message=F}
 library(tidyverse)
 library(cowplot)
 library(magick)
 ```
-
+## Arranging indiviual figures into a grid/collage
+### Main figures
+#### Figure 1 - Benchmark overview
 ```{r "Figure 1"}
 fig1_1 = plot_grid(
   ggdraw() + draw_image("paper/figures/sub/Figure1a.png"),
   ggdraw() + draw_image("paper/figures/sub/Figure1c.png"),
-  labels=c("A", "C")
+  labels=c("A", "C"), label_size = 18
 )
 
 fig1 = plot_grid(
   fig1_1,
   ggdraw() + draw_image("paper/figures/sub/Figure1b.png"),
-  ncol=1, labels=c("", "B")
+  ncol=1, labels=c("", "B"), label_size = 18
   )
 ggsave("paper/figures/Figure1.png", fig1, width=10, height=10)
 
 ```
-
+#### Figure 2 - PROGENy benchmark results
 ```{r "Figure 2"}
-fig2 = plot_grid(roc_curve_global, pr_curve_global, labels = c("A", "B"))
+global_roc_curve = readRDS("fig/progeny_benchmark/global_roc_curve.rds")
+global_pr_curve = readRDS("fig/progeny_benchmark/global_pr_curve.rds")
+
+fig2 = plot_grid(global_roc_curve, global_pr_curve, 
+                 labels = c("A", "B"), label_size = 18)
 ggsave("paper/figures/Figure2.png", fig2, width = 10, height=5)
 ```
 
+#### Figure 3 - DoRothEA benchmark results
 ```{r "Figure 3"}
-fig3 = plot_grid(auroc_vs_conf_plot, auprc_vs_conf_plot, roc_curve_plot, pr_curve_plot, labels = c("A", "B", "C", "D"))
+auroc_vs_conf = readRDS("fig/dorothea_benchmark/auroc_vs_conf.rds")
+auprc_vs_conf = readRDS("fig/dorothea_benchmark/auprc_vs_conf.rds")
+global_roc_curve = readRDS("fig/dorothea_benchmark/global_roc_curve.rds")
+global_pr_curve = readRDS("fig/dorothea_benchmark/global_pr_curve.rds")
+
+fig3 = plot_grid(auroc_vs_conf, auprc_vs_conf, 
+                 global_roc_curve, global_pr_curve, 
+                 labels = c("A", "B", "C", "D"), label_size = 18,
+                 align="v")
 ggsave("paper/figures/Figure3.png", fig3, width = 10, height=10)
 ```
 
+#### Figure 4 - Disease enrichment
 ```{r "Figure 4"}
-fig4_1 = plot_grid(volcano_plot_pw, volcano_plot_tf, ncol=1, labels = c("B", "C"))
-fig4 = plot_grid(ggdraw() + draw_image("paper/figures/sub/Figure4a.png"), fig4_1, labels = c("A", ""))
+volcano_plot_pw = readRDS("fig/disease_enrichment/volcano_plot_pw.rds")
+volcano_plot_tf = readRDS("fig/disease_enrichment/volcano_plot_tf.rds")
+
+fig4_1 = plot_grid(ggdraw() + draw_image("paper/figures/sub/Figure4a.png"),
+                   labels = "A", label_size=18)
+
+fig4_2 = plot_grid(
+  volcano_plot_pw, 
+  volcano_plot_tf, 
+  ncol=1, labels=c("B", "C", ""), label_size=18, align="v", axis="l")
+
+fig4 = plot_grid(fig4_1, fig4_2, ncol=2)
 ggsave("paper/figures/Figure4.png", fig4, width=10, height=10)
 ```
-
+### Supplement figures
+#### Figure S1 - PROGENy pathway-wise benchmark results using ROC
 ```{r "Figure S1"}
-figS1 = roc_curve_pw
+pw_roc_curve = readRDS("fig/progeny_benchmark/pw_roc_curve.rds")
+figS1 = pw_roc_curve
 ggsave("paper/figures/FigureS1.png", figS1, width = 10, height=10)
 ```
 
+#### Figure S2 - PROGENy benchmark downsampled
 ```{r "Figure S2"}
-figS2 = plot_grid(tp_tn_ratio_global, auroc_downsampled_global, labels = c("A", "B"))
+global_tp_tn_ratio = readRDS("fig/progeny_benchmark/global_tp_tn_ratio.rds")
+auroc_downsampled = readRDS("fig/progeny_benchmark/auroc_downsampled.rds")
+
+figS2 = plot_grid(global_tp_tn_ratio, auroc_downsampled, labels = c("A", "B"),
+                  label_size = 18)
 ggsave("paper/figures/FigureS2.png", figS2, width = 10, height=5)
 ```
 
+#### Figure S3 - PROGENy pathway-wise benchmark results using PR
 ```{r "Figure S3"}
+pw_pr_curve = readRDS("fig/progeny_benchmark/pw_pr_curve.rds")
 figS3 = pr_curve_pw
 ggsave("paper/figures/FigureS3.png", figS3, width = 10, height=10)
 ```
 
+#### Figure S4 - DoRothEA properties + benchmark downsampled
 ```{r "Figure S4"}
-figS4_1 = plot_grid(regulon_properties_plot, tf_coverage_plot, labels = c("A", "B"), rel_widths = c(2,1))
-figS4_2 = plot_grid(tp_tn_ratio_plot, auroc_downsampled_plot, labels = c("C", "D"), rel_widths = c(1,1))
+regulon_properties = readRDS("fig/dorothea_benchmark/regulon_properties.rds")
+tf_coverage = readRDS("fig/dorothea_benchmark/tf_coverage.rds")
+global_tp_tn_ratio = readRDS("fig/dorothea_benchmark/global_tp_tn_ratio.rds")
+auroc_downsampled = readRDS("fig/dorothea_benchmark/auroc_downsampled.rds")
+
+aligned_plots = align_plots(regulon_properties, global_tp_tn_ratio, 
+                            align="v", axis="l")
+
+figS4_1 = plot_grid(aligned_plots[[1]], tf_coverage, labels = c("A", "B"), 
+                    label_size=18, rel_widths = c(2,1), align="h", axis="bt")
+figS4_2 = plot_grid(aligned_plots[[2]], auroc_downsampled, 
+                    labels = c("C", "D"), label_size=18,
+                    rel_widths = c(1,1), align="h", axis="bt")
 figS4 = plot_grid(figS4_1, figS4_2, ncol=1)
 ggsave("paper/figures/FigureS4.png", figS4, width = 10, height=10)
 ```
 
+#### Figure S5 - Comparison between DoRothEA and TRRUST
 ```{r "Figure S5"}
-figS5 = plot_grid(overlap_dorothea_trrust, regulon_similarity_plot, labels = c("A", "B"))
+overlap_dorothea_trrust = readRDS("fig/dorothea_benchmark/overlap_dorothea_trrust.rds")
+regulon_similarity = readRDS("fig/dorothea_benchmark/regulon_similarity.rds")
+figS5 = plot_grid(overlap_dorothea_trrust, regulon_similarity, 
+                  labels = c("A", "B"), label_size = 18)
 ggsave("paper/figures/FigureS5.png", figS5, width=10, height=5)
 ```
