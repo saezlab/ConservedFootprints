@@ -60,8 +60,10 @@ res = design %>%
          dorothea = pmap(., .f = run_dorothea)) %>%
   select(organism, progeny, dorothea)
 
+# required for shiny app
+saveRDS(res, "output/disease_enrichment/progeny_dorothea_scores_untranslated.rds")
 
-saveRDS(res, "output/disease_enrichment/progeny_dorothea_scores_untransated.rds")
+res = readRDS("output/disease_enrichment/progeny_dorothea_scores_untranslated.rds")
 
 # translate mouse tfs to human tfs
 annotation = read_csv("data/annotations/annotation_mgi_hgnc.csv") %>%
@@ -70,10 +72,8 @@ annotation = read_csv("data/annotations/annotation_mgi_hgnc.csv") %>%
 
 res_tmp = res %>% select(-dorothea)
 
-res_translated = res %>% unnest(dorothea) %>% 
-  #filter(d_tf == "ADNP" | d_tf == "Adnp") %>%
-  #filter(id == "dz:1012" | id == "dz:985") %>%
-  #select(organism, d_tf, id) %>%
+res_translated = res %>% 
+  unnest(dorothea) %>% 
   left_join(annotation, by="d_tf") %>%
   mutate(d_tf = case_when(organism == "human" ~ d_tf,
                           organism == "mouse" ~ hgnc_symbol)) %>%
