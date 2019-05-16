@@ -107,6 +107,8 @@ regulon_properties_plot = regulon_properties %>%
     title = "DoRothEA Confidence Level",
     default.unit="inch",
     ncol=5))
+
+saveRDS(regulon_properties_plot, "fig/dorothea_benchmark/regulon_properties.rds")
 ```
 
 ```{r "tf coverage"}
@@ -126,6 +128,8 @@ tf_coverage_plot = df_coverage %>%
         axis.text.x = element_text(angle = 45, hjust=1),
         legend.text = element_text(size=14),
         legend.position = "none")
+
+saveRDS(tf_coverage_plot, "fig/dorothea_benchmark/tf_coverage.rds")
 ```
 
 ```{r "auroc vs confidence level"}
@@ -157,6 +161,8 @@ auroc_vs_conf_plot = df_auroc %>%
     ncol=2)) +
   scale_color_manual(values=c("#A11035","#0098A1")) +
   labs(x = "DoRothEA Confidence Level", y = "AUROC")
+
+saveRDS(auroc_vs_conf_plot, "fig/dorothea_benchmark/auroc_vs_conf.rds")
 ```
 
 ```{r "auprc vs confidence level"}
@@ -188,6 +194,8 @@ auprc_vs_conf_plot = df_auprc %>%
     ncol=2)) +
   scale_color_manual(values=c("#A11035","#0098A1")) +
   labs(x = "DoRothEA Confidence Level", y = "AUPRC")
+
+saveRDS(auprc_vs_conf_plot, "fig/dorothea_benchmark/auprc_vs_conf.rds")
 ```
 
 ```{r "global roc curve"}
@@ -217,6 +225,8 @@ roc_curve_plot = ggplot(df_roc, aes(x = fpr, y=tpr, color=legend)) +
     ncol=1)) +
   scale_color_manual(values=c("#A11035","#0098A1")) +
   labs(x = "False positive rate", y = "True positive rate")
+
+saveRDS(roc_curve_plot, "fig/dorothea_benchmark/global_roc_curve.rds")
 ```
 
 ```{r "global downlsampled auroc"}
@@ -251,6 +261,8 @@ auroc_downsampled_plot = df_auroc_ds %>%
   scale_color_manual(values=c("#A11035","#0098A1")) +
   lims(y = c(0.5,1)) +
   labs(y="AUROC", x="")
+
+saveRDS(auroc_downsampled_plot, "fig/dorothea_benchmark/auroc_downsampled.rds")
 ```
 
 ```{r "global pr curve"}
@@ -280,6 +292,8 @@ pr_curve_plot = ggplot(df_pr, aes(x = recall, y=precision, color=legend)) +
   scale_color_manual(values=c("#A11035","#0098A1")) +
   labs(x = "Recall", y = "Precision") +
   lims(x = c(0,1), y=c(0,1))
+
+saveRDS(pr_curve_plot, "fig/dorothea_benchmark/global_pr_curve.rds")
 ```
 
 ```{r "tp/tn ratio"}
@@ -313,6 +327,8 @@ tp_tn_ratio_plot = ggplot(df_tp_tn_ratio,
     ncol=2)) +
   scale_fill_manual(values=c("#006165","#F6A800")) +
   labs(x = "Confidence Level", y="Percentage [%]")
+
+saveRDS(tp_tn_ratio_plot, "fig/dorothea_benchmark/global_tp_tn_ratio.rds")
 ```
 
 ```{r "overlap of mouse dorothea vs mouse trrust"}
@@ -329,16 +345,6 @@ trrust = read_csv(
   distinct(tf) %>%
   mutate(resource = "TRRUST")
 
-### upset plot
-df = bind_rows(dorothea, trrust) %>%
-  mutate(val = 1) %>%
-  spread(resource, val, fill=0) %>%
-  data.frame(row.names=1, check.names = F, stringsAsFactors = F)
-
-u = upset(df, sets = rev(names(df)), keep.order = T, order.by = "freq", 
-      decreasing = T, mainbar.y.label = "Shared TFs", 
-      sets.x.label = "Number of TFs per resource", text.scale = 1.5)
-
 ### venn diagram
 overlap_dorothea_trrust = draw.pairwise.venn(
   length(unique(dorothea$tf)), 
@@ -350,6 +356,9 @@ overlap_dorothea_trrust = draw.pairwise.venn(
   alpha=0.3
   ) %>%
   as_ggplot()
+
+saveRDS(overlap_dorothea_trrust, 
+        "fig/dorothea_benchmark/overlap_dorothea_trrust.rds")
 ```
 
 ```{r "similarity between mouse dorothea and mouse trrust"}
@@ -375,4 +384,7 @@ regulon_similarity_plot = similiartiy_scores %>%
         legend.text = element_text(size=12),
         legend.position = c(0.75, 0.7)
         )
+
+saveRDS(regulon_similarity_plot, 
+        "fig/dorothea_benchmark/regulon_similarity.rds")
 ```
