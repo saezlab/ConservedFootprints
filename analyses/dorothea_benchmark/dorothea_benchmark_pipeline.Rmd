@@ -24,7 +24,8 @@ library(viper)
 source("src/dorothea_analysis.R")
 source("src/roc_curve_analysis.R")
 ```
-
+### Benchmark
+#### Build regulons
 ```{r "build regulons", eval=F, echo=F}
 # build human and moust TRRUST regulon
 path_trrust_human = "data/dorothea_benchmark/regulons/trrust_rawdata.human.tsv"
@@ -54,6 +55,7 @@ write_csv(mouse_trrust_regulon,
           "data/dorothea_benchmark/regulons/trrust_regulon_mouse.csv")
 ```
 
+#### Consider confidence score in benchmarking
 ```{r "consider confidence score in benchmarking"}
 # load human regulons and subset regulons based on confidence score
 human_dorothea_all = read_csv(
@@ -214,7 +216,11 @@ dorothea_performance = dorothea_performance %>%
   select(-roc_obj) %>%
   inner_join(dorothea_performance, by=c("confidence","organism", "name"))
 
-saveRDS(dorothea_performance, file="output/dorothea_benchmark/dorothea_benchmark_result.rds")
+saveRDS(dorothea_performance, 
+        file="output/dorothea_benchmark/dorothea_benchmark_result.rds")
+
+dorothea_performance = readRDS(
+  "output/dorothea_benchmark/dorothea_benchmark_result.rds")
 
 
 # access performance scores
@@ -239,6 +245,7 @@ dorothea_performance %>%
   filter(confidence == "AB")
 ```
 
+#### Similarity between mouse DoRothEA and mouse TRRUST
 ```{r "similarity between mouse dorothea and mouse trrust"}
 calc_jaccard_index = function(x) {
   l = x %>% split(.$resource)
