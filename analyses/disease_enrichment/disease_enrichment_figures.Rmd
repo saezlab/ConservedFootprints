@@ -41,9 +41,6 @@ p_hist_plot = df %>%
         aspect.ratio = c(2)) +
   labs(x = "p-value", y="Counts") +
   scale_fill_manual(values = c("#F6A800", "#0098A1"))
-
-# ggsave(filename = "figures/case_study/pval_histogram.png", 
-#        plot = p_hist_plot, device = "png", width=5, height=5)
 ```
 
 ```{r "volcano plot"}
@@ -150,8 +147,8 @@ volcano_plot_tf = df %>%
   labs(x = "NES", y="-log10(FDR)") +
   scale_color_manual(values=c("#CC071E", "#0098A1","#9C9E9F"))
 
-ggsave(filename = "paper/figures/Figure5/Figure5b.png", 
-       plot = volcano_plot, device = "png", width=5, height=10)
+saveRDS(volcano_plot_pw, "fig/disease_enrichment/volcano_plot_pw.rds")
+saveRDS(volcano_plot_tf, "fig/disease_enrichment/volcano_plot_tf.rds")
 ```
 
 ```{r "disease set distribution"}
