@@ -22,8 +22,9 @@ library(pROC)
 source("src/progeny_analysis.R")
 source("src/roc_curve_analysis.R")
 ```
-
-```{r "load and prepare benchmarkdata for PROGENy"}
+### Benchmark  
+#### Load prepare benchmark data for PROGENy benchmark
+```{r "load and prepare benchmark data for progeny benchmark"}
 # Those experiments were used for the construction of progeny and must be thus
 # discared
 exclude_acc = readRDS("data/progeny_benchmark/progeny_exclude_accession.rds")
@@ -39,13 +40,20 @@ saveRDS(progeny_input,
         "output/progeny_benchmark/progeny_input.rds")
 ```
 
+#### Benchmark gloabl PROGENy performance
 ```{r "benchmark global progeny performance"}
 # load model matrices
 M_human = read.csv("data/progeny_benchmark/models/progeny_matrix_human_v1.csv",
                    row.names=1, check.names = F)
 
-M_mouse = read.csv("data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv"
-                   ,row.names=1, check.names = F)
+M_mouse = read.csv("data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv",
+                   row.names=1, check.names = F)
+
+M_mouse %>% rownames_to_column("gene") %>%
+  gather(pathway, weight, -gene) %>%
+  filter(weight != 0) %>%
+  as_tibble() %>%
+  count(pathway)
 
 # load expression
 expr = readRDS("output/progeny_benchmark/progeny_input.rds") %>%
@@ -90,6 +98,10 @@ progeny_performance_global = progeny_performance_global %>%
 saveRDS(progeny_performance_global, 
         file="output/progeny_benchmark/progeny_benchmark_result_global.rds")
 
+progeny_performance_global = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_global.rds"
+  )
+
 # access performance scores
 # auroc
 progeny_performance_global %>% 
@@ -109,7 +121,9 @@ progeny_performance_global %>%
   distinct(organism, auc, run) %>%
   nest() %>%
   mutate(t_test = data %>% map(~tidy(lm(auc~organism, data=.)))) %>%
-  unnest(t_test)
+  unnest(t_test) %>%
+  filter(term == "organismmouse") %>%
+  pull(p.value)
 
 # auprc
 progeny_performance_global %>%
@@ -117,13 +131,14 @@ progeny_performance_global %>%
   distinct(organism, auc)
 ```
 
+#### Benchmark PROGENy performance pathway-wise
 ```{r "benchmark progeny performance pathway-wise"}
 # load model matrices
 M_human = read.csv("data/progeny_benchmark/models/progeny_matrix_human_v1.csv",
                    row.names=1, check.names = F)
 
-M_mouse = read.csv("data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv"
-                   ,row.names=1, check.names = F)
+M_mouse = read.csv("data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv",
+                   row.names=1, check.names = F)
 
 # load expression
 expr = readRDS("output/progeny_benchmark/progeny_input.rds") %>%
@@ -146,7 +161,7 @@ progeny_performance_pw = design %>%
   mutate(roc = activity %>% map(calc_roc_curve),
          pr = activity %>% map(calc_pr_curve),
          roc_obj = activity %>% map(get_roc_object),
-         roc_downsampled = activity %>% map(calc_roc_curve, downsampling=T, 
+         roc_downsampled = activity %>% map(calc_roc_curve, downsampling=T,
                                                times = 3000)
          )
 
@@ -169,6 +184,9 @@ progeny_performance_pw = progeny_performance_pw %>%
 
 saveRDS(progeny_performance_pw, 
         file="output/progeny_benchmark/progeny_benchmark_result_pw.rds")
+
+progeny_performance_pw = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_pw.rds")
 
 # acess performance scores
 progeny_performance_pw %>%
