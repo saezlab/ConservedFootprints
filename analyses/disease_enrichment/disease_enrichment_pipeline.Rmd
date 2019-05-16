@@ -65,6 +65,7 @@ saveRDS(res, "output/disease_enrichment/progeny_dorothea_scores_untransated.rds"
 
 # translate mouse tfs to human tfs
 annotation = read_csv("data/annotations/annotation_mgi_hgnc.csv") %>%
+  drop_na() %>%
   rename(d_tf = mgi_symbol)
 
 res_tmp = res %>% select(-dorothea)
@@ -190,6 +191,7 @@ d_disease = dat %>%
 gsea_input = bind_rows(p_disease, d_disease)
 
 # run GSEA using fgsea 
+set.seed(1234)
 gsea_res = gsea_input %>%
   nest(-c(organism, feature, class)) %>%
   mutate(gsea = data %>% map(function(i) {
@@ -206,11 +208,13 @@ gsea_res = gsea_input %>%
 
 saveRDS(gsea_res, file="output/disease_enrichment/gsea_result.rds")
 
+gsea_res = readRDS("output/disease_enrichment/gsea_result.rds")
+
 # performance scores
 gsea_res %>%
   filter(padj <= 0.1 & abs(NES) > 1) %>%
   group_by(class) %>%
-  count()
+  count() 
 
 gsea_res %>%
   filter(padj <= 0.1 & abs(NES) > 1) %>%
