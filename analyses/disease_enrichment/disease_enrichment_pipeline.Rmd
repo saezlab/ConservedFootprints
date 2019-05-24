@@ -72,6 +72,7 @@ annotation = read_csv("data/annotations/annotation_mgi_hgnc.csv") %>%
 
 res_tmp = res %>% select(-dorothea)
 
+# TODO: check GSE466, dz:328 the TF MYCN is duplicated
 res_translated = res %>% 
   unnest(dorothea) %>% 
   left_join(annotation, by="d_tf") %>%
