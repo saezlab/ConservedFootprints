@@ -136,7 +136,7 @@ knockdown_mapping = tibble(
            "INHIBITION  (ERK inhibitor U0126)", "VR", "L540Q point mutation",
            "Stat1 delta alpha (da), deficient for STAT1 dimer with C-termina",
            "Stat1 delta beta (db), deficient for STAT1 dimer without C-termi",
-           " APC(Min/+) mutant", "Drug","knockdown")
+           " APC(Min/+) mutant", "Drug","knockdown", "PTEN F341V")
   ) %>%
   mutate(perturbation = "knockdown",
          sign=-1)
@@ -148,7 +148,7 @@ overexpression_mapping = tibble(
            "Selective cardiac induced overexpression of the gene for in male",
            "Actvation of gene product","Induction",
            "Activation (deltaNB-cateninER transgenics)",
-           "overexpression", "PTEN F341V", NA,
+           "overexpression", NA,
            "transient expression of constitutively active IKK&Icirc;&sup2;(E",
            "expression of a constitutively active allele of the I&Icirc;&ord",
            "Activation")
