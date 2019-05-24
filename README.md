@@ -13,9 +13,9 @@ The human and mouse specific DoRothEA regulons are stored in [`data/dorothea_ben
 #### PROGENy matrices
 The extended human and mouse specific PROGENy matrices are stored in [`data/progeny_benchmark/models`](https://github.com/saezlab/ConservedFootprints/tree/master/data/progeny_benchmark/models). The activity of the following pathways can be inferred from mouse and human gene expression data:
 
-* Androgen (new)
+* Androgen (<span style="color:red">new</span>)
 * EGFR
-* Estrogen (new)
+* Estrogen (<span style="color:red">new</span>)
 * Hypoxia 
 * JAK-STAT 
 * MAPK
@@ -26,7 +26,7 @@ The extended human and mouse specific PROGENy matrices are stored in [`data/prog
 * Trail
 * p53
 * VEGF
-* WNT (new)
+* WNT (<span style="color:red">new</span>)
 
 #### Disease sets
 The newly generated disease sets are available in [`paper/material/disease_sets.csv`](https://github.com/saezlab/ConservedFootprints/blob/master/paper/material/disease_sets.csv). 
