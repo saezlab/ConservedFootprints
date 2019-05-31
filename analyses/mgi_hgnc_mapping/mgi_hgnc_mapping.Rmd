@@ -94,7 +94,8 @@ tmp_mouse_progeny %>%
   filter(round(weight,2) == 1.88) %>%
   inner_join(rename(annotation_mgi_hgnc, gene = mgi_symbol), by="gene")
 
-# how many genes need to be added to footprints due to duplicating during mapping process
+# how many genes need to be added to footprints due to duplicating during 
+# mapping process
 number_of_additional_genes = tmp_mouse_progeny %>% 
   count(pathway, weight) %>%
   filter(n>1) %>%
@@ -124,18 +125,6 @@ write.csv(mouse_progeny,
           "data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv")
 write_csv(full_mouse_matrix, 
           "data/progeny_benchmark/models/progeny_matrix_mouse_full_v1.csv")
-
-
-
-
-x %>% count(pathway, weight) %>% filter(n == 6)
-x %>% filter(pathway == "TNFa") %>% filter(round(weight,2) == 1.14) # problem
-
-translated_matrix2 %>%
-  select(gene, pathway, weight) %>%
-  spread(pathway, weight, fill=0) %>%
-  data.frame(check.names = F, stringsAsFactors = F) %>%
-  write_csv("data/progeny_benchmark/models/progeny_matrix_mouse_v3.csv")
 ```
 
 ### Translate human DoRothEA regulon to mouse
