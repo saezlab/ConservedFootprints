@@ -23,10 +23,9 @@ library(tidyverse)
 
 ### Create annotaion file between MGI and HGNC symbols
 ```{r "create annotaion files"}
-mouse_ensembl = useMart("ensembl",dataset="mmusculus_gene_ensembl", 
-                        host = "http://jul2018.archive.ensembl.org")
-human_ensembl = useMart("ensembl", dataset = "hsapiens_gene_ensembl", 
-                        host = "http://jul2018.archive.ensembl.org")
+# host = "http://apr2019.archive.ensembl.org"
+mouse_ensembl = useMart("ensembl",dataset="mmusculus_gene_ensembl")
+human_ensembl = useMart("ensembl", dataset = "hsapiens_gene_ensembl")
 
 # mgi symbol - hgnc symbol
 getLDS(attributes = c("mgi_symbol"),
@@ -34,53 +33,107 @@ getLDS(attributes = c("mgi_symbol"),
        attributesL = c("hgnc_symbol"), martL = human_ensembl) %>%
   as_tibble() %>%
   rename(mgi_symbol = MGI.symbol, hgnc_symbol = HGNC.symbol) %>%
+  na_if("") %>%
   write_csv("data/annotations/annotation_mgi_hgnc.csv")
 ```
 
-### Translate human PROGENy matric to mouse
-```{r "translate human progeny matrix to mice"}
+### Translate human PROGENy matrix to mouse
+```{r "translate full progeny matrix to mouse"}
 # load annotation file and remove predicted genes
 annotation_mgi_hgnc = read_csv("data/annotations/annotation_mgi_hgnc.csv") %>%
-  filter(!str_detect(mgi_symbol, "^Gm[:digit:]+")) %>%
-  drop_na()
+  drop_na() %>%
+  filter(!str_detect(mgi_symbol, "^Gm[:digit:]+"))
 
-# load human progeny matrix
-progeny_matrix_human_v1 = read_csv(
-  "data/progeny_benchmark/models/progeny_matrix_human_v1.csv"
-  ) %>%
-  rename(gene = X1) %>%
-  gather(pathway, weight, -gene) %>%
-  filter(weight != 0)
+# load full human progeny matrix
+full_human_matrix = read_csv(
+  "data/progeny_benchmark/models/progeny_matrix_human_full_v1.csv"
+  )
 
-# translate to mgi symbols
-progeny_matrix_mouse_v1 = progeny_matrix_human_v1 %>%
+# human to mouse mapping
+full_mouse_matrix = full_human_matrix %>%
   rename(hgnc_symbol = gene) %>%
-  inner_join(annotation_mgi_hgnc, by="hgnc_symbol") %>% 
+  inner_join(annotation_mgi_hgnc, by="hgnc_symbol") %>%
+  rename(weight = zscore) %>%
   # when multiple mgi symbols are mapped to a single hgnc symbol the progeny 
   # weight is divided by the number of mapping mgi symbols
   group_by(hgnc_symbol, pathway) %>% 
   add_count(hgnc_symbol) %>%
-  mutate(weight = weight/n) %>%
+  ungroup() %>%
+  mutate(weight = weight/n,
+         p.value = p.value) %>%
   # when multiple hgnc are mapped to a single mgi symbol the progeny weight of 
   # the single mgi symbol is the mean of the corresponding hgnc symbols
   group_by(mgi_symbol, pathway) %>%
-  summarise(weight = mean(weight)) %>%
+  summarise(weight = mean(weight),
+            p.value = mean(p.value)) %>%
   ungroup() %>%
   rename(gene = mgi_symbol) %>%
-  arrange(pathway, gene) %>%
-  spread(pathway, weight, fill = 0) %>%
-  data.frame(row.names=1, check.names = F, stringsAsFactors = F)
+  arrange(pathway, gene)
 
-write.csv(progeny_matrix_mouse_v1, 
+# select top 100 genes per pathway based on most significant p-values
+tmp_mouse_progeny = full_mouse_matrix %>%
+  group_by(pathway) %>%
+  top_n(100, -p.value) %>%
+  ungroup()
+
+
+# Compensation for mapping problem. E.g. the human gene SERPINA3 is a footprint 
+# gene of TNFa and maps to 10 mgi ortholog genes. Thus we bias the TNFa pathway 
+# to SERPINA3. 10 % - (10 out of 100 genes) of the footprint are based on 
+# SERPINA3. We correct this by adding [number of duplicates - 1] new genes to 
+# the footprint
+
+# demonstration of mapping problem 
+tmp_mouse_progeny %>% 
+  filter(pathway == "TNFa") %>% 
+  filter(round(weight,2) == 1.14) %>%
+  inner_join(rename(annotation_mgi_hgnc, gene = mgi_symbol), by="gene")
+
+tmp_mouse_progeny %>% 
+  filter(pathway == "JAK-STAT") %>% 
+  filter(round(weight,2) == 1.88) %>%
+  inner_join(rename(annotation_mgi_hgnc, gene = mgi_symbol), by="gene")
+
+# how many genes need to be added to footprints due to duplicating during 
+# mapping process
+number_of_additional_genes = tmp_mouse_progeny %>% 
+  count(pathway, weight) %>%
+  filter(n>1) %>%
+  mutate(number_of_extra_genes = n - 1) %>%
+  group_by(pathway) %>%
+  tally(number_of_extra_genes)
+
+# build mouse progeny compensating for duplication problem
+mouse_progeny = full_mouse_matrix %>%
+  # remove genes with are already available in the footprint of a pathway
+  anti_join(tmp_mouse_progeny, by=c("pathway", "gene")) %>%
+  # add column specifying how many additional genes must be selected
+  left_join(number_of_additional_genes, by="pathway") %>%
+  arrange(pathway, p.value) %>%
+  group_by(pathway) %>%
+  mutate(index = row_number()) %>%
+  ungroup() %>%
+  filter(index <= n) %>%
+  select(gene, pathway, weight, p.value) %>%
+  # merge with temporary mouse progeny matrix
+  bind_rows(tmp_mouse_progeny) %>%
+  select(gene, pathway, weight) %>%
+  spread(pathway, weight, fill=0) %>%
+  data.frame(row.names=1, check.names=F, stringsAsFactors = F)
+
+write.csv(mouse_progeny, 
           "data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv")
+write_csv(full_mouse_matrix, 
+          "data/progeny_benchmark/models/progeny_matrix_mouse_full_v1.csv")
 ```
 
 ### Translate human DoRothEA regulon to mouse
 ```{r "translate human dorothea regulon to mice"}
 # load annotation file and remove predicted mgi genes
 annotation_mgi_hgnc = read_csv("data/annotations/annotation_mgi_hgnc.csv") %>%
-  filter(!str_detect(mgi_symbol, "^Gm[:digit:]+")) %>%
-  drop_na()
+  drop_na() %>%
+  filter(!str_detect(mgi_symbol, "^Gm[:digit:]+"))
+  
 
 # load human regulon
 dorothea_regulon_human_v1 = read_csv(

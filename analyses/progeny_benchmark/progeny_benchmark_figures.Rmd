@@ -94,9 +94,7 @@ roc_curve_global = ggplot(df_roc, aes(x = fpr, y=tpr, colour=legend)) +
   scale_color_manual(values=c("#1F78B4","#33A02C")) +
   labs(x = "False positive rate", y = "True positive rate")
 
-ggsave(filename = "paper/figures/Figure2/Figure2a.png", 
-       plot = roc_curve_global, device = "png", width=5, height=5)
-
+saveRDS(roc_curve_global, "fig/progeny_benchmark/global_roc_curve.rds")
 ```
 
 ```{r "global downsampled auroc"}
@@ -133,9 +131,7 @@ auroc_downsampled_global = df_downsampled %>%
   labs(x ="", y="AUROC")
 
   
-
-ggsave(filename = "paper/figures/Figure2/Figure2b.png", 
-       plot = auroc_downsampled_global, device = "png", width=2.5, height=5)
+saveRDS(auroc_downsampled_global, "fig/progeny_benchmark/auroc_downsampled.rds")
   
 ```
 
@@ -168,8 +164,7 @@ pr_curve_global = ggplot(df_pr, aes(x = recall, y=precision, color=legend)) +
   geom_hline(yintercept = 0.1, size=1, linetype=2) +
   lims(y=c(0,1))
 
-ggsave(filename = "paper/figures/Figure2/Figure2c.png", 
-       plot = pr_curve_global, device = "png", width=5, height=5)
+saveRDS(pr_curve_global, "fig/progeny_benchmark/global_pr_curve.rds")
 ```
 
 ```{r "TP/TN ratio"}
@@ -204,8 +199,7 @@ tp_tn_ratio_global = ggplot(df_tp_tn_ratio,
   scale_fill_manual(values=c("#006165","#F6A800")) +
   labs(x = "", y="Percentage [%]")
 
-ggsave(filename = "paper/figures/Figure2/Figure2d.png", 
-       plot = tp_tn_ratio_global, device = "png", width=2.5, height=5)
+saveRDS(tp_tn_ratio_global, "fig/progeny_benchmark/global_tp_tn_ratio.rds")
 ```
 
 ```{r "pathway-wise roc curves"}
@@ -240,8 +234,7 @@ roc_curve_pw = ggplot(df_roc_pw, aes(x = fpr, y=tpr, color=organism)) +
   labs(x = "False positive rate", y = "True positive rate") +
   lims(x=c(0,1), y=c(0,1))
 
-ggsave(filename = "paper/figures/FigureS1/FigureS1.png", 
-       plot = roc_curve_pw, device = "png", width=10, height=10)
+saveRDS(roc_curve_pw, "fig/progeny_benchmark/pw_roc_curve.rds")
 ```
 
 ```{r "pathway-wise pr curves"}
@@ -285,7 +278,5 @@ pr_curve_pw = ggplot(df_pr_pw, aes(x = recall, y=precision, color=organism)) +
   labs(x = "Recall", y = "Precision") +
   lims(x=c(0,1), y=c(0,1))
   
-
-ggsave(filename = "paper/figures/FigureS2/FigureS2.png", 
-       plot = pr_curve_pw, device = "png", width=10, height=10)
+saveRDS(pr_curve_pw, "fig/progeny_benchmark/pw_pr_curve.rds")
 ```

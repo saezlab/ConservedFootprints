@@ -66,39 +66,3 @@ df = design %>%
 
 saveRDS(df, "output/single_drug_gene_resource/progeny_dorothea_scores.rds")
 ```
-
-```{r "heatmaps"}
-df = readRDS("output/single_drug_gene_resource/progeny_dorothea_scores.rds")
-
-p = df %>% unnest(progeny) %>%
-  select(id, feature = progeny_pathway, activity=score, organism, source) %>%
-  mutate(method = "progeny")
-
-d = df %>% unnest(dorothea) %>%
-  select(id, feature = d_tf, activity = d_score, organism, source) %>%
-  mutate(method = "dorothea")
-
-dat = bind_rows(p,d) %>%
-  group_by(organism, source, feature) %>%
-  mutate(activity = scale(activity)) %>%
-  ungroup() %>%
-  nest(-c(organism, source, method))
-
-heatmaps = dat %>%
-  mutate(matrix = data %>% map(~data.frame(spread(., id, activity), 
-                                        row.names=1, check.names = F))) %>%
-  mutate(cor_matrix = matrix %>% map(~cor(.))) %>%
-  mutate(heatmap = matrix %>% map(~pheatmap(., treeheight_row = 0, 
-                                            treeheight_col = 0, 
-                                            show_rownames = F, 
-                                            show_colnames = F))) %>%
-  mutate(cor_heatmap = cor_matrix %>% map(~pheatmap(., treeheight_row = 0, 
-                                                    treeheight_col = 0, 
-                                                    show_rownames = F, 
-                                                    show_colnames = F))) %>%
-  select(organism, source, method, heatmap, cor_heatmap)
-
-saveRDS(heatmaps, "output/single_drug_gene_resource/heatmaps.rds")
-
-x = readRDS("output/single_drug_gene_resource/heatmaps.rds")
-```
