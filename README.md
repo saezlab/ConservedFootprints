@@ -29,7 +29,7 @@ The extended human and mouse specific PROGENy matrices (with ~100 footprint gene
 * WNT (<span style="color:red">new</span>)
 
 #### Disease sets
-The newly generated disease sets are available in [`paper/material/disease_sets.csv`](https://github.com/saezlab/ConservedFootprints/blob/master/paper/material/disease_sets.csv). 
+The newly generated disease sets are available in [`paper/auxilliary_files/disease_sets.csv`](https://github.com/saezlab/ConservedFootprints/blob/master/paper/material/disease_sets.csv). 
 
 #### Resource of pathway and TF activites of perturbation and disease experiments
 Pathway and TF activities of perturbation and disease experiments can be browsed in a user friendly web application available at [https://saezlab.shinyapps.io/footprint_scores](https://saezlab.shinyapps.io/footprint_scores).
