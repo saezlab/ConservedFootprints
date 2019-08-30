@@ -280,3 +280,73 @@ pr_curve_pw = ggplot(df_pr_pw, aes(x = recall, y=precision, color=organism)) +
   
 saveRDS(pr_curve_pw, "fig/progeny_benchmark/pw_pr_curve.rds")
 ```
+
+```{r "table of global performance scores"}
+pr_global = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_global.rds"
+  ) %>%
+  unnest(pr) %>%
+  distinct(organism, auc, tp, tn) %>%
+  mutate(random = tp / (tp + tn)) %>%
+  distinct(organism, auc, random) %>%
+  mutate(metric = "AUPRC") %>%
+  mutate(evaluation = "Global")
+
+pr_pw = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_pw.rds"
+  ) %>% 
+  unnest(pr) %>%
+  distinct(pathway, organism, auc, tp, tn) %>%
+  mutate(random = tp / (tp + tn)) %>%
+  distinct(organism, auc, pathway, random) %>%
+  mutate(metric = "AUPRC") %>%
+  mutate(evaluation = "Pathway-wise")
+
+roc_global = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_global.rds"
+  ) %>%
+  unnest(roc) %>%
+  distinct(organism, auc) %>%
+  mutate(metric = "AUROC") %>%
+  mutate(evaluation = "Global")
+
+roc_pw = readRDS(
+  "output/progeny_benchmark/progeny_benchmark_result_pw.rds"
+  ) %>% 
+  unnest(roc) %>%
+  distinct(organism, auc, pathway) %>%
+  mutate(metric = "AUROC") %>%
+  mutate(evaluation = "Pathway-wise")
+
+p = bind_rows(pr_global, pr_pw, roc_global, roc_pw)
+r = p %>% 
+  select(-auc) %>%
+  spread(metric, random) %>%
+  select(-AUROC, "random AUPRC" = "AUPRC")
+
+t = p %>% 
+  select(-random) %>%
+  spread(metric, auc) %>%
+  arrange(evaluation, pathway) %>%
+  left_join(r) %>%
+  mutate_if(is.numeric, round,4) %>%
+  mutate(organism = str_to_title(organism)) %>%
+  rename(Organism = organism,
+         Evaluation = evaluation, 
+         Pathway = pathway) %>%
+  select(Organism, Evaluation, Pathway, AUROC, AUPRC, `random AUPRC`)
+  
+
+table_progeny_performance = gridExtra::tableGrob(t, row = NULL) %>%
+  gtable::gtable_add_grob(.,
+        grobs = grid::segmentsGrob( # line across the bottom
+            x0 = unit(0,"npc"),
+            y0 = unit(0,"npc"),
+            x1 = unit(1,"npc"),
+            y1 = unit(0,"npc"),
+            gp = grid::gpar(lwd = 2.0, lty = "dashed", color=2)),
+        t = 3, l = 1, r = ncol(.))
+
+saveRDS(table_progeny_performance, "fig/progeny_benchmark/table_progeny_performance.rds")
+```
+
