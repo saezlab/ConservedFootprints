@@ -11,7 +11,7 @@ Please use this reference to cite:
 The human and mouse specific DoRothEA regulons are stored in [`data/dorothea_benchmark/regulons/`](https://github.com/saezlab/ConservedFootprints/tree/master/data/dorothea_benchmark/regulons). They are present as datatables. To convert them to the required `viper` format please use the function [`df2regulon()`](https://github.com/saezlab/ConservedFootprints/blob/3cee21853a90f78bd13b6eebcb5538fc4c129cab/src/dorothea_analysis.R#L105-L120). It exist also the complementary function allowing the transformation from viper format to datatable (see [`regulon2df()`](https://github.com/saezlab/ConservedFootprints/blob/3cee21853a90f78bd13b6eebcb5538fc4c129cab/src/dorothea_analysis.R#L122-L135)).
 
 #### PROGENy matrices
-The extended human and mouse specific PROGENy matrices are stored in [`data/progeny_benchmark/models`](https://github.com/saezlab/ConservedFootprints/tree/master/data/progeny_benchmark/models). The activity of the following pathways can be inferred from mouse and human gene expression data:
+The extended human and mouse specific PROGENy matrices (with ~100 footprint genes) are stored in [`data/progeny_benchmark/models`](https://github.com/saezlab/ConservedFootprints/tree/master/data/progeny_benchmark/models). In addition we provide in the same directory the full human and progeny matrix with all available footprint genes. The activity of the following pathways can be inferred from mouse and human gene expression data:
 
 * Androgen (<span style="color:red">new</span>)
 * EGFR
