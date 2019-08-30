@@ -1,5 +1,5 @@
 ---
-title: Translate human regulons to mouse regulons
+title: "Benchmark DoRothEA and TRRUST on TF perturbation data"
 author: "Christian Holland"
 date: "09/04/2018"
 output: html_document
@@ -25,7 +25,7 @@ source("src/dorothea_analysis.R")
 source("src/roc_curve_analysis.R")
 ```
 ### Benchmark
-#### Build regulons
+#### Build TRRUST regulons
 ```{r "build regulons", eval=F, echo=F}
 # build human and moust TRRUST regulon
 path_trrust_human = "data/dorothea_benchmark/regulons/trrust_rawdata.human.tsv"
@@ -55,8 +55,8 @@ write_csv(mouse_trrust_regulon,
           "data/dorothea_benchmark/regulons/trrust_regulon_mouse.csv")
 ```
 
-#### Consider confidence score in benchmarking
-```{r "consider confidence score in benchmarking"}
+#### Consider confidence score in benchmarking mouse-DoRothEA vs TRRUST
+```{r "consider confidence score in benchmarking mouse-DoRothEA vs TRRUST"}
 # load human regulons and subset regulons based on confidence score
 human_dorothea_all = read_csv(
   "data/dorothea_benchmark/regulons/dorothea_regulon_human_v1.csv"
@@ -244,6 +244,9 @@ dorothea_performance %>%
   distinct(name, auc, confidence) %>%
   filter(confidence == "AB")
 ```
+
+
+
 
 #### Similarity between mouse DoRothEA and mouse TRRUST
 ```{r "similarity between mouse dorothea and mouse trrust"}
