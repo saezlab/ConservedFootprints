@@ -151,7 +151,7 @@ disease_sets_df %>%
   select(disease = query, disease_set = group, experiment=id) %>%
   arrange(disease_set, disease, experiment) %>%
   select(disease_set, disease, experiment) %>%
-  write_csv("paper/material/disease_sets.csv")
+  write_csv("paper/auxilliary_files/disease_sets.csv")
 
 
 # create disease sets from data frame for GSEA
