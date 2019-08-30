@@ -1,5 +1,5 @@
 ---
-title: "Benchmark PROGENy on mouse and human single gene/drug perturbation data"
+title: "Benchmark PROGENy on mouse and human pathway perturbation data"
 author: "Christian Holland"
 date: "05/03/2018"
 output: html_document
@@ -49,11 +49,6 @@ M_human = read.csv("data/progeny_benchmark/models/progeny_matrix_human_v1.csv",
 M_mouse = read.csv("data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv",
                    row.names=1, check.names = F)
 
-M_mouse %>% rownames_to_column("gene") %>%
-  gather(pathway, weight, -gene) %>%
-  filter(weight != 0) %>%
-  as_tibble() %>%
-  count(pathway)
 
 # load expression
 expr = readRDS("output/progeny_benchmark/progeny_input.rds") %>%
