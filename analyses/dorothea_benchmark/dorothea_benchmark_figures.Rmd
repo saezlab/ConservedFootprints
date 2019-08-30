@@ -22,6 +22,8 @@ library(plotrix)
 library(ggsignif)
 library(VennDiagram)
 library(ggpubr)
+
+theme_set(theme_cowplot())
 ```
 
 ```{r "dorothea benchmark data distribution"}
@@ -351,9 +353,13 @@ overlap_dorothea_trrust = draw.pairwise.venn(
   length(unique(trrust$tf)), 
   length(intersect(dorothea$tf, trrust$tf)), 
   category = c("DoRothEA", "TRRUST"),
-  fill = c("#A11035","#0098A1"),
-  cex=2,
-  alpha=0.3
+  fill = c("#F6A800","#0098A1"),
+  cex=c(1,1,1),
+  fontfamily=c("sans", "sans", "sans"),
+  cat.fontfamily = c("sans", "sans"),
+  cat.cex = c(1,1),
+  cat.pos = c(-25,25)
+  # cat.just = list(c(3,0), c(-3,0))
   ) %>%
   as_ggplot()
 
@@ -387,4 +393,48 @@ regulon_similarity_plot = similiartiy_scores %>%
 
 saveRDS(regulon_similarity_plot, 
         "fig/dorothea_benchmark/regulon_similarity.rds")
+```
+
+```{r "table of global performance scores"}
+pr_global = readRDS(
+  "output/dorothea_benchmark/dorothea_benchmark_result.rds"
+  ) %>%
+  filter(organism == "mouse") %>%
+  unnest(pr) %>%
+  distinct(name, auc, tp, tn, confidence) %>%
+  mutate(random = tp / (tp + tn)) %>%
+  distinct(name, auc, confidence, random) %>%
+  mutate(metric = "AUPRC")
+
+
+roc_global = readRDS(
+  "output/dorothea_benchmark/dorothea_benchmark_result.rds"
+  ) %>%
+  filter(organism == "mouse") %>%
+  unnest(roc) %>%
+  distinct(name, auc, confidence) %>%
+  mutate(metric = "AUROC")
+
+
+p = bind_rows(pr_global, roc_global) %>%
+  mutate(name = case_when(name == "dorothea" ~ "DoRothEA",
+                          name == "trrust" ~ "TRRUST"))
+r = p %>% 
+  select(-auc) %>%
+  spread(metric, random) %>%
+  select(-AUROC, "random AUPRC" = "AUPRC")
+
+t = p %>% 
+  select(-random) %>%
+  spread(metric, auc) %>%
+  left_join(r) %>%
+  mutate_if(is.numeric, round,4) %>%
+  rename(Resource = name, Confidence = confidence) %>%
+  select(Resource, Confidence, AUROC, AUPRC, `random AUPRC`) %>%
+  arrange(Confidence)
+  
+
+table_dorothea_performance = gridExtra::tableGrob(t, row = NULL)
+
+saveRDS(table_dorothea_performance, "fig/dorothea_benchmark/table_dorothea_performance.rds")
 ```

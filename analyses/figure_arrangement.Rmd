@@ -17,24 +17,48 @@ knitr::knit(..., quiet = TRUE)
 library(tidyverse)
 library(cowplot)
 library(magick)
+
+theme_set(theme_cowplot())
 ```
 ## Arranging indiviual figures into a grid/collage
 ### Main figures
 #### Figure 1 - Benchmark overview
 ```{r "Figure 1"}
-fig1_1 = plot_grid(
+fig1_top_left = plot_grid(
   ggdraw() + draw_image("paper/figures/sub/Figure1a.png"),
+  labels = c("A"), label_size = 18
+)
+fig1_top_right_top = plot_grid(
   ggdraw() + draw_image("paper/figures/sub/Figure1c.png"),
-  labels=c("A", "C"), label_size = 18
+  NULL,
+  ggdraw() + draw_image("paper/figures/sub/Figure1d.png"),
+  labels=c("C", "", "D"), ncol=3, label_size = 18,
+  rel_widths = c(1,0.05,1)
 )
 
-fig1 = plot_grid(
-  fig1_1,
-  ggdraw() + draw_image("paper/figures/sub/Figure1b.png"),
-  ncol=1, labels=c("", "B"), label_size = 18
-  )
-ggsave("paper/figures/Figure1.png", fig1, width=10, height=10)
+fig1_top_right = plot_grid(
+  fig1_top_right_top,
+  ggdraw() + draw_image("paper/figures/sub/Figure1cd_legend.png"),
+  ncol=1, rel_heights = c(1,0.25), align = "h", axis="lr"
+)
 
+
+fig1_top = plot_grid(
+  fig1_top_left,NULL,fig1_top_right,
+  ncol=3,
+  rel_widths = c(1,0.05,1),
+  align = "v", axis = "tb"
+  )
+
+fig1 = plot_grid(
+  fig1_top + theme(plot.margin = margin(0,0,0.5,0,unit = "cm")),
+  ggdraw() + draw_image("paper/figures/sub/Figure1b.png") + 
+    theme(plot.margin = margin(0.4, 0, 0, 0, unit = "cm")),
+  ncol=1, labels = c("", "B"),
+  label_size = 18
+)
+
+ggsave("paper/figures/Figure1.png", fig1, width=10, height=8)
 ```
 #### Figure 2 - PROGENy benchmark results
 ```{r "Figure 2"}
@@ -101,30 +125,52 @@ figS3 = pr_curve_pw
 ggsave("paper/figures/FigureS3.png", figS3, width = 10, height=10)
 ```
 
-#### Figure S4 - DoRothEA properties + benchmark downsampled
+#### Figure S4 - DoRothEA properties + comparison to TRRUST
 ```{r "Figure S4"}
 regulon_properties = readRDS("fig/dorothea_benchmark/regulon_properties.rds")
 tf_coverage = readRDS("fig/dorothea_benchmark/tf_coverage.rds")
-global_tp_tn_ratio = readRDS("fig/dorothea_benchmark/global_tp_tn_ratio.rds")
-auroc_downsampled = readRDS("fig/dorothea_benchmark/auroc_downsampled.rds")
+overlap_dorothea_trrust = readRDS("fig/dorothea_benchmark/overlap_dorothea_trrust.rds")
+regulon_similarity = readRDS("fig/dorothea_benchmark/regulon_similarity.rds")
 
-aligned_plots = align_plots(regulon_properties, global_tp_tn_ratio, 
+aligned_plots = align_plots(regulon_properties, overlap_dorothea_trrust, 
                             align="v", axis="l")
 
-figS4_1 = plot_grid(aligned_plots[[1]], tf_coverage, labels = c("A", "B"), 
+figS4_1 = plot_grid(aligned_plots[[1]], tf_coverage, labels = c("A", "D"), 
                     label_size=18, rel_widths = c(2,1), align="h", axis="bt")
-figS4_2 = plot_grid(aligned_plots[[2]], auroc_downsampled, 
-                    labels = c("C", "D"), label_size=18,
+figS4_2 = plot_grid(aligned_plots[[2]], regulon_similarity, 
+                    labels = c("B", "C"), label_size=18,
                     rel_widths = c(1,1), align="h", axis="bt")
 figS4 = plot_grid(figS4_1, figS4_2, ncol=1)
 ggsave("paper/figures/FigureS4.png", figS4, width = 10, height=10)
 ```
 
-#### Figure S5 - Comparison between DoRothEA and TRRUST
+#### Figure S5 - DoRothEA benchmark downsampled
 ```{r "Figure S5"}
-overlap_dorothea_trrust = readRDS("fig/dorothea_benchmark/overlap_dorothea_trrust.rds")
-regulon_similarity = readRDS("fig/dorothea_benchmark/regulon_similarity.rds")
-figS5 = plot_grid(overlap_dorothea_trrust, regulon_similarity, 
-                  labels = c("A", "B"), label_size = 18)
+
+global_tp_tn_ratio = readRDS("fig/dorothea_benchmark/global_tp_tn_ratio.rds")
+auroc_downsampled = readRDS("fig/dorothea_benchmark/auroc_downsampled.rds")
+
+figS5 = plot_grid(global_tp_tn_ratio, auroc_downsampled, 
+                  labels = c("A", "B"), label_size = 18, align = "h", axis = "t")
 ggsave("paper/figures/FigureS5.png", figS5, width=10, height=5)
+```
+
+#### Supp Table S3
+```{r}
+p = readRDS("fig/progeny_benchmark/table_progeny_performance.rds")
+
+progeny_table = plot_grid(p)
+
+ggsave("paper/auxilliary_files/Supplementary Table S2.png",
+       progeny_table, width =6, height = 7.5)
+```
+
+#### Supp Table S4
+```{r}
+d = readRDS("fig/dorothea_benchmark/table_dorothea_performance.rds")
+
+dorothea_table = plot_grid(d)
+
+ggsave("paper/auxilliary_files/Supplementary Table S3.png",
+       dorothea_table, width =5, height = 3.25)
 ```
